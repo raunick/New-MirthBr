@@ -6,6 +6,10 @@
 
 Uma **engine de integração para saúde** de alta performance (alternativa ao Mirth Connect) construída com **Rust** (Backend) e **Next.js/React Flow** (Frontend). Projetada para processar mensagens HL7, FHIR e formatos personalizados com um editor visual baseado em fluxos.
 
+<p align="center">
+  <img src="frontend/public/mirthbr-infografico.png" alt="Infográfico MirthBR" width="100%" />
+</p>
+
 ---
 
 ## 🚀 Funcionalidades
