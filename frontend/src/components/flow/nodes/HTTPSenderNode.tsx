@@ -1,0 +1,88 @@
+import React, { memo } from 'react';
+import { Handle, Position, NodeProps } from 'reactflow';
+import { Globe } from 'lucide-react';
+import InlineEdit from '../InlineEdit';
+
+interface HTTPSenderData {
+    label: string;
+    url: string;
+    method: string;
+    onDataChange?: (field: string, value: string | number) => void;
+}
+
+const methodOptions = [
+    { value: 'GET', label: 'GET' },
+    { value: 'POST', label: 'POST' },
+    { value: 'PUT', label: 'PUT' },
+    { value: 'PATCH', label: 'PATCH' },
+    { value: 'DELETE', label: 'DELETE' },
+];
+
+const HTTPSenderNode = ({ data, id }: NodeProps<HTTPSenderData>) => {
+    const handleChange = (field: string, value: string | number) => {
+        data.onDataChange?.(field, value);
+    };
+
+    const getMethodColor = (method: string) => {
+        switch (method) {
+            case 'GET': return 'text-[var(--success)]';
+            case 'POST': return 'text-[var(--primary)]';
+            case 'PUT': return 'text-[var(--warning)]';
+            case 'PATCH': return 'text-[var(--secondary)]';
+            case 'DELETE': return 'text-[var(--error)]';
+            default: return 'text-[var(--foreground)]';
+        }
+    };
+
+    return (
+        <div className="flow-node destination-http px-4 py-3 w-[280px]">
+            <Handle
+                type="target"
+                position={Position.Left}
+                className="!w-3 !h-3 !bg-[var(--node-destination-http)] !border-2 !border-[var(--background)]"
+            />
+
+            <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-lg bg-[var(--node-destination-http)]/20 flex items-center justify-center">
+                    <Globe size={20} className="text-[var(--node-destination-http)]" />
+                </div>
+                <div className="flex-1">
+                    <InlineEdit
+                        value={data.label || 'HTTP Sender'}
+                        onChange={(v) => handleChange('label', v)}
+                        className="text-sm font-semibold text-[var(--foreground)]"
+                        displayClassName="hover:text-[var(--primary)] cursor-text"
+                        inputClassName="bg-transparent border-b border-[var(--primary)] outline-none w-full"
+                    />
+                    <div className="text-xs text-[var(--foreground-muted)]">HTTP Destination</div>
+                </div>
+            </div>
+
+            <div className="mt-3 space-y-2">
+                <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)]">
+                    <div className="flex items-center gap-2">
+                        <InlineEdit
+                            value={data.method || 'POST'}
+                            onChange={(v) => handleChange('method', v)}
+                            type="select"
+                            options={methodOptions}
+                            className={`text-sm font-bold ${getMethodColor(data.method || 'POST')}`}
+                            displayClassName="hover:bg-[var(--background)] px-2 py-0.5 rounded cursor-pointer"
+                            inputClassName="bg-[var(--background)] border border-[var(--glass-border)] rounded px-1 py-0.5 outline-none font-bold"
+                        />
+                        <InlineEdit
+                            value={data.url || 'https://api.example.com'}
+                            onChange={(v) => handleChange('url', v)}
+                            placeholder="https://..."
+                            className="flex-1 text-sm font-mono text-[var(--foreground)]"
+                            displayClassName="hover:bg-[var(--background)] px-1 rounded cursor-text truncate"
+                            inputClassName="bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-0.5 w-full outline-none"
+                        />
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default memo(HTTPSenderNode);

@@ -1,0 +1,31 @@
+{
+    "id": "e2f75000-8800-4100-9900-112233445566",
+    "name": "Hospital Admission Flow",
+    "enabled": true,
+    "source": {
+        "type": "http_listener",
+        "config": {
+            "port": 8081
+        }
+    },
+    "processors": [
+        {
+            "id": "lua-hl7-parse",
+            "name": "HL7 to JSON Converter",
+            "type": "lua_script",
+            "config": {
+                "code": "-- Hospital Simulation Script\nlocal hl7 = require('hl7')\n\nlog.info('Received HL7 Message: ' .. msg.content)\n\n-- Convert HL7 to JSON\nlocal json_output = hl7.to_json(msg.content)\n\nlog.info('Converted to JSON: ' .. json_output)\n\nreturn json_output"
+            }
+        }
+    ],
+    "destinations": [
+        {
+            "id": "file-patient-db",
+            "name": "Patient Database",
+            "type": "file_writer",
+            "config": {
+                "path": "patient_db.json"
+            }
+        }
+    ]
+}

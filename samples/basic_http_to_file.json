@@ -1,0 +1,31 @@
+{
+    "id": "550e8400-e29b-41d4-a716-446655440001",
+    "name": "Sample HTTP -> Uppercase -> File",
+    "enabled": true,
+    "source": {
+        "type": "http_listener",
+        "config": {
+            "port": 8081
+        }
+    },
+    "processors": [
+        {
+            "id": "proc-lua-1",
+            "name": "Uppercase Script",
+            "type": "lua_script",
+            "config": {
+                "code": "log.info('Processing message: ' .. msg.content)\nreturn msg.content:upper()"
+            }
+        }
+    ],
+    "destinations": [
+        {
+            "id": "dest-file-1",
+            "name": "Local File Output",
+            "type": "file_writer",
+            "config": {
+                "path": "sample_output.txt"
+            }
+        }
+    ]
+}

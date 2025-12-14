@@ -1,0 +1,19 @@
+# OS
+.DS_Store
+
+# Backend (Rust)
+backend/target/
+backend/**/*.rs.bk
+*.log
+backend/output.txt
+
+# Frontend (Node)
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/build/
+frontend/.env
+frontend/.env.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
