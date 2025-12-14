@@ -62,16 +62,22 @@ impl ChannelManager {
 
         // 2. Start Source Listener
         match channel.source {
-            SourceConfig::Http { port, .. } => {
+            SourceConfig::Http { port, path } => {
+                let mut path = path.unwrap_or_else(|| "/".to_string());
+                if !path.starts_with('/') {
+                    path = format!("/{}", path);
+                }
+                
                 let listener = HttpListener {
                     port,
+                    path: path.clone(),
                     channel_id,
                     sender: tx,
                 };
                 listener.start().await;
                 
                 // Log startup
-                self.add_log("INFO", format!("Channel {} started on port {}", channel.name, port), Some(channel_id));
+                self.add_log("INFO", format!("Channel {} started on port {} (path: {})", channel.name, port, path), Some(channel_id));
             },
             SourceConfig::Test { payload_type, .. } => {
                 // No listener to start, just waiting for manual injection

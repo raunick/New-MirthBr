@@ -12,6 +12,11 @@ impl FileWriter {
     }
 
     pub async fn send(&self, msg: &Message) -> anyhow::Result<()> {
+        let path = std::path::Path::new(&self.path);
+        if let Some(parent) = path.parent() {
+            tokio::fs::create_dir_all(parent).await?;
+        }
+
         let mut file = OpenOptions::new()
             .create(true)
             .append(true)

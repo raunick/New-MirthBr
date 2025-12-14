@@ -1,16 +1,15 @@
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, DragEvent } from 'react';
 import {
     Radio, Network, FileInput, Database,
     Code2, ArrowRightLeft, Filter, GitBranch, FileJson,
     FileText, Globe, PlayCircle,
-    Plus, Layers, ChevronDown, ChevronRight
+    Plus, Layers, ChevronDown, ChevronRight,
+    // Utility icons
+    Wifi, Hash, Type, Variable, MessageSquare,
+    Timer, ScrollText, Calculator, Clock, GitMerge
 } from 'lucide-react';
-
-interface SidebarProps {
-    onAddNode?: (type: string) => void;
-}
 
 interface NodeType {
     type: string;
@@ -143,6 +142,82 @@ const nodeCategories: NodeCategory[] = [
             },
         ]
     },
+    {
+        name: 'Utilities',
+        color: 'var(--warning)',
+        nodes: [
+            {
+                type: 'ipNode',
+                label: 'IP Address',
+                icon: Wifi,
+                color: 'var(--warning)',
+                description: 'Configure IP address'
+            },
+            {
+                type: 'portNode',
+                label: 'Port',
+                icon: Hash,
+                color: 'var(--warning)',
+                description: 'Configure port number'
+            },
+            {
+                type: 'textNode',
+                label: 'Text/Template',
+                icon: Type,
+                color: 'var(--warning)',
+                description: 'Store constant text'
+            },
+            {
+                type: 'variableNode',
+                label: 'Variables',
+                icon: Variable,
+                color: 'var(--warning)',
+                description: 'Key-value pairs'
+            },
+            {
+                type: 'commentNode',
+                label: 'Comment',
+                icon: MessageSquare,
+                color: '#fef3c7',
+                description: 'Add documentation'
+            },
+            {
+                type: 'delayNode',
+                label: 'Delay',
+                icon: Timer,
+                color: 'var(--warning)',
+                description: 'Add wait time'
+            },
+            {
+                type: 'loggerNode',
+                label: 'Logger',
+                icon: ScrollText,
+                color: 'var(--warning)',
+                description: 'Log messages'
+            },
+            {
+                type: 'counterNode',
+                label: 'Counter',
+                icon: Calculator,
+                color: 'var(--warning)',
+                description: 'Count messages'
+            },
+            {
+                type: 'timestampNode',
+                label: 'Timestamp',
+                icon: Clock,
+                color: 'var(--warning)',
+                description: 'Add timestamps'
+            },
+            {
+                type: 'mergeNode',
+                label: 'Merge',
+                icon: GitMerge,
+                color: 'var(--warning)',
+                description: 'Combine inputs'
+            },
+        ]
+    },
 ];
 
 import { useFlowStore } from '@/stores/useFlowStore';
@@ -153,6 +228,7 @@ export default function Sidebar() {
         'Sources': true,
         'Processors': true,
         'Destinations': true,
+        'Utilities': false,
     });
 
     const toggleCategory = (name: string) => {
@@ -160,6 +236,12 @@ export default function Sidebar() {
             ...prev,
             [name]: !prev[name]
         }));
+    };
+
+    // Handle drag start for drag and drop
+    const onDragStart = (event: DragEvent<HTMLButtonElement>, nodeType: string) => {
+        event.dataTransfer.setData('application/reactflow', nodeType);
+        event.dataTransfer.effectAllowed = 'move';
     };
 
     return (
@@ -172,6 +254,9 @@ export default function Sidebar() {
                     <span className="ml-auto text-xs bg-[var(--primary)]/20 text-[var(--primary)] px-2 py-0.5 rounded-full">
                         {nodeCategories.reduce((acc, cat) => acc + cat.nodes.length, 0)} nodes
                     </span>
+                </div>
+                <div className="mt-2 text-xs text-[var(--foreground-muted)]">
+                    Drag nodes to canvas or click to add
                 </div>
             </div>
 
@@ -207,6 +292,8 @@ export default function Sidebar() {
                                     <button
                                         key={node.type}
                                         onClick={() => addNode(node.type)}
+                                        draggable
+                                        onDragStart={(e) => onDragStart(e, node.type)}
                                         className="w-full p-2.5 glass-card flex items-center gap-3 text-left group cursor-grab active:cursor-grabbing hover:scale-[1.02] transition-transform"
                                     >
                                         <div
@@ -238,7 +325,7 @@ export default function Sidebar() {
             {/* Footer */}
             <div className="p-3 border-t border-[var(--glass-border)]">
                 <div className="text-xs text-[var(--foreground-muted)] text-center">
-                    Click to add nodes to canvas
+                    Drag to canvas or click to add
                 </div>
             </div>
         </aside>

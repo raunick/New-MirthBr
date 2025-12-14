@@ -11,6 +11,7 @@ use std::sync::Arc;
 
 pub struct HttpListener {
     pub port: u16,
+    pub path: String,
     pub channel_id: Uuid,
     pub sender: mpsc::Sender<Message>,
 }
@@ -20,7 +21,7 @@ use tower_http::cors::CorsLayer;
 impl HttpListener {
     pub async fn start(&self) {
         let app = Router::new()
-            .route("/", post(handler))
+            .route(&self.path, post(handler))
             .layer(CorsLayer::permissive()) // Add CORS
             .with_state(AppState {
                 channel_id: self.channel_id,

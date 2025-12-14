@@ -1,18 +1,15 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { useFlowStore } from '@/stores/useFlowStore'; // Import store
+import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import ReactFlow, {
     Background,
     Controls,
     MiniMap,
-    useNodesState,
-    useEdgesState,
-    addEdge,
     Connection,
-    Edge,
-    Node,
     BackgroundVariant,
+    useReactFlow,
+    ReactFlowProvider,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 
@@ -35,13 +32,28 @@ import HTTPSenderNode from './nodes/HTTPSenderNode';
 import DatabaseWriterNode from './nodes/DatabaseWriterNode';
 import TCPSenderNode from './nodes/TCPSenderNode';
 
+// Special Nodes
 import TestNode from './nodes/TestNode';
 
+// Utility Nodes
+import IPNode from './nodes/IPNode';
+import PortNode from './nodes/PortNode';
+import TextNode from './nodes/TextNode';
+import VariableNode from './nodes/VariableNode';
+import CommentNode from './nodes/CommentNode';
+import DelayNode from './nodes/DelayNode';
+import LoggerNode from './nodes/LoggerNode';
+import CounterNode from './nodes/CounterNode';
+import TimestampNode from './nodes/TimestampNode';
+import MergeNode from './nodes/MergeNode';
+
+import ContextMenu from './ContextMenu';
 import LuaEditorModal from '../editor/LuaEditorModal';
 import { Button } from '@/components/ui/button';
 import { exportToRust } from '@/lib/flow-compiler';
 import { deployChannel } from '@/lib/api';
-import { Play, Save } from 'lucide-react';
+import { validateConnection } from '@/lib/connectionValidation';
+import { Play, Save, Layout, Download, Upload } from 'lucide-react';
 import axios from 'axios';
 
 const nodeTypes = {
@@ -63,36 +75,129 @@ const nodeTypes = {
     tcpSender: TCPSenderNode,
     // Special
     testNode: TestNode,
-};
-
-type NodeData = {
-    label: string;
-    [key: string]: any;
+    // Utility Nodes
+    ipNode: IPNode,
+    portNode: PortNode,
+    textNode: TextNode,
+    variableNode: VariableNode,
+    commentNode: CommentNode,
+    delayNode: DelayNode,
+    loggerNode: LoggerNode,
+    counterNode: CounterNode,
+    timestampNode: TimestampNode,
+    mergeNode: MergeNode,
 };
 
 interface FlowCanvasProps {
-    nodeToAdd?: string | null;
     onDeploySuccess?: () => void;
     onDeployError?: () => void;
 }
 
-// Initial data moved to store
-// const initialNodesList ...
-// const initialEdges ...
+interface MenuState {
+    show: boolean;
+    type: 'node' | 'edge' | 'pane';
+    id: string;
+    x: number;
+    y: number;
+}
 
-export default function FlowCanvas({ onDeploySuccess, onDeployError }: FlowCanvasProps) { // Removed nodeToAdd
-    // Use Store
+function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
+    const reactFlowWrapper = useRef<HTMLDivElement>(null);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+    const { screenToFlowPosition } = useReactFlow();
+
     const {
         nodes, edges, onNodesChange, onEdgesChange, onConnect,
-        setNodes, updateNodeData
+        setNodes, updateNodeData, deleteNode, duplicateNode, deleteEdge,
+        addNodeAtPosition, saveFlow, loadFlow, exportFlow, importFlow,
+        channelName, setChannelName
     } = useFlowStore();
 
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
     const [editorCode, setEditorCode] = useState("");
     const [isDeploying, setIsDeploying] = useState(false);
+    const [menu, setMenu] = useState<MenuState | null>(null);
 
-    // handleDataChange uses store action now
+    // Close menu on click outside
+    const onPaneClick = useCallback(() => setMenu(null), []);
+
+    // Context menu handlers
+    const onNodeContextMenu = useCallback(
+        (event: React.MouseEvent, node: { id: string }) => {
+            event.preventDefault();
+            setMenu({
+                show: true,
+                type: 'node',
+                id: node.id,
+                x: event.clientX,
+                y: event.clientY,
+            });
+        },
+        []
+    );
+
+    const onEdgeContextMenu = useCallback(
+        (event: React.MouseEvent, edge: { id: string }) => {
+            event.preventDefault();
+            setMenu({
+                show: true,
+                type: 'edge',
+                id: edge.id,
+                x: event.clientX,
+                y: event.clientY,
+            });
+        },
+        []
+    );
+
+    const onPaneContextMenu = useCallback(
+        (event: React.MouseEvent) => {
+            event.preventDefault();
+            setMenu({
+                show: true,
+                type: 'pane',
+                id: '',
+                x: event.clientX,
+                y: event.clientY,
+            });
+        },
+        []
+    );
+
+    // Drag and Drop handlers
+    const onDragOver = useCallback((event: React.DragEvent) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+    }, []);
+
+    const onDrop = useCallback(
+        (event: React.DragEvent) => {
+            event.preventDefault();
+
+            const type = event.dataTransfer.getData('application/reactflow');
+            if (!type) return;
+
+            const position = screenToFlowPosition({
+                x: event.clientX,
+                y: event.clientY,
+            });
+
+            addNodeAtPosition(type, position);
+        },
+        [screenToFlowPosition, addNodeAtPosition]
+    );
+
+    // Connection validation
+    const isValidConnection = useCallback(
+        (connection: Connection) => {
+            const result = validateConnection(connection, nodes, edges);
+            return result.valid;
+        },
+        [nodes, edges]
+    );
+
+    // Data change handler
     const handleDataChange = useCallback((nodeId: string, field: string, value: any) => {
         updateNodeData(nodeId, field, value);
     }, [updateNodeData]);
@@ -115,15 +220,13 @@ export default function FlowCanvas({ onDeploySuccess, onDeployError }: FlowCanva
 
     const handleDeploy = async () => {
         setIsDeploying(true);
-        // Use consistent Channel ID
-        const payload = exportToRust(nodes, edges, "My Channel");
+        const payload = exportToRust(nodes, edges, channelName || "My Channel");
         payload.id = channelId;
 
         console.log("Deploying:", payload);
         try {
             await deployChannel(payload);
             onDeploySuccess?.();
-            // Show success toast or log?
         } catch (e) {
             onDeployError?.();
             console.error(e);
@@ -131,6 +234,42 @@ export default function FlowCanvas({ onDeploySuccess, onDeployError }: FlowCanva
             setIsDeploying(false);
         }
     };
+
+    const handleSave = useCallback(() => {
+        saveFlow();
+        // Could show a toast here
+    }, [saveFlow]);
+
+    const handleDownload = useCallback(() => {
+        exportFlow();
+    }, [exportFlow]);
+
+    const handleUpload = useCallback(() => {
+        fileInputRef.current?.click();
+    }, []);
+
+    const handleFileChange = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+        const file = event.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = JSON.parse(e.target?.result as string);
+                if (data.nodes && Array.isArray(data.nodes)) {
+                    importFlow(data);
+                } else {
+                    alert('Arquivo de workflow inválido');
+                }
+            } catch (err) {
+                alert('Erro ao ler arquivo: ' + err);
+            }
+        };
+        reader.readAsText(file);
+
+        // Reset input so same file can be selected again
+        event.target.value = '';
+    }, [importFlow]);
 
     const handleTest = useCallback(async (payloadType: string, payloadContent: string) => {
         try {
@@ -140,25 +279,16 @@ export default function FlowCanvas({ onDeploySuccess, onDeployError }: FlowCanva
             });
         } catch (e: any) {
             console.error(e);
-            throw e; // Let node handle error display
+            throw e;
         }
     }, [channelId]);
 
-    // Callback injection Effect
-    // Replaces the old useEffect that mutated nodes deeply.
-    // To avoid infinite loops, we only update if callback is missing.
-    // However, since handleTest and handleEditCode depend on local state (editor open, channelId),
-    // we need to be careful.
+    // Load flow on mount
+    useEffect(() => {
+        loadFlow();
+    }, [loadFlow]);
 
-    // Ideally, we shouldn't mute nodes in store for callbacks.
-    // But for this refactor, let's keep it but ensure reference stability.
-    // Or simpler: Just update the specific node that needs it?
-
-    // Actually, updateNodeData in store merges data. 
-    // We can use a simpler approach: Just pass these handlers to the Context Provider? 
-    // But ReactFlow nodes don't easily consume context without wrapper.
-
-    // Let's stick to the Effect but optimize it: only update if missing.
+    // Callback injection
     useEffect(() => {
         let changed = false;
         const newNodes = nodes.map(node => {
@@ -166,31 +296,21 @@ export default function FlowCanvas({ onDeploySuccess, onDeployError }: FlowCanva
             let newData = { ...data };
             let modified = false;
 
-            // Base Callbacks
             if (!data.onDataChange) {
                 newData.onDataChange = (field: string, value: any) => handleDataChange(node.id, field, value);
                 modified = true;
             }
 
-            // Edit Callbacks
             if (['luaScript', 'filter', 'databasePoller', 'databaseWriter'].includes(node.type || '')) {
                 if (!data.onEdit) {
                     newData.onEdit = (code: string) => handleEditCode(node.id, code);
                     modified = true;
                 }
-                // ... others omitted for brevity, assuming standard edit is main one. 
-                // Full impl:
                 if (!data.onEditCondition) { newData.onEditCondition = (c: string) => handleEditCode(node.id, c); modified = true; }
                 if (!data.onEditQuery) { newData.onEditQuery = (q: string) => handleEditCode(node.id, q); modified = true; }
             }
 
-            // Test Callback
             if (node.type === 'testNode') {
-                // Check if onTest reference is stale? Hard to know. 
-                // We'll just overwrite it if we believe handleTest changed (it depends on channelId).
-                // But overwriting triggers store update -> render -> effect loop.
-                // We need handleTest to be stable or reference-independent.
-                // handleTest depends on channelId, which is stable (useState 1-time).
                 if (!data.onTest) {
                     newData.onTest = handleTest;
                     modified = true;
@@ -205,20 +325,56 @@ export default function FlowCanvas({ onDeploySuccess, onDeployError }: FlowCanva
         });
 
         if (changed) {
-            // Bulk update to avoid multiple renders
-            // setNodes from store replaces everything.
             setNodes(newNodes);
         }
-    }, [nodes, handleDataChange, handleEditCode, handleTest, setNodes]); // Dependencies need to be stable!
+    }, [nodes, handleDataChange, handleEditCode, handleTest, setNodes]);
 
     return (
-        <div className="w-full h-full relative">
+        <div className="w-full h-full relative" ref={reactFlowWrapper}>
+            {/* Hidden file input for upload */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                accept=".json"
+                onChange={handleFileChange}
+                className="hidden"
+            />
+
             {/* Toolbar */}
-            <div className="absolute top-4 right-4 z-10 flex gap-2">
+            <div className="absolute top-4 right-4 z-10 flex gap-2 items-center">
+                <input
+                    type="text"
+                    value={channelName}
+                    onChange={(e) => setChannelName(e.target.value)}
+                    placeholder="Nome do Canal"
+                    className="h-9 px-3 rounded-md bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--foreground)] placeholder-[var(--foreground-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)] w-48 text-sm"
+                />
                 <Button
                     variant="outline"
                     size="sm"
+                    onClick={handleUpload}
                     className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
+                    title="Carregar workflow de arquivo"
+                >
+                    <Upload size={16} className="mr-2" />
+                    Upload
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleDownload}
+                    className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
+                    title="Baixar workflow como arquivo"
+                >
+                    <Download size={16} className="mr-2" />
+                    Download
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleSave}
+                    className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
+                    title="Salvar no navegador"
                 >
                     <Save size={16} className="mr-2" />
                     Save
@@ -240,6 +396,13 @@ export default function FlowCanvas({ onDeploySuccess, onDeployError }: FlowCanva
                 onNodesChange={onNodesChange}
                 onEdgesChange={onEdgesChange}
                 onConnect={onConnect}
+                onNodeContextMenu={onNodeContextMenu}
+                onEdgeContextMenu={onEdgeContextMenu}
+                onPaneContextMenu={onPaneContextMenu}
+                onPaneClick={onPaneClick}
+                onDragOver={onDragOver}
+                onDrop={onDrop}
+                isValidConnection={isValidConnection}
                 nodeTypes={nodeTypes}
                 fitView
                 defaultEdgeOptions={{
@@ -257,6 +420,10 @@ export default function FlowCanvas({ onDeploySuccess, onDeployError }: FlowCanva
                 <MiniMap
                     nodeColor={(node) => {
                         const type = node.type || '';
+                        // Utility nodes
+                        if (['ipNode', 'portNode', 'textNode', 'variableNode', 'commentNode', 'delayNode', 'loggerNode', 'counterNode', 'timestampNode', 'mergeNode'].includes(type)) {
+                            return 'var(--warning)';
+                        }
                         if (type.includes('http') || type.includes('tcp') || type.includes('file') || type.includes('database')) {
                             if (type.includes('Sender') || type.includes('Writer')) {
                                 return 'var(--node-destination)';
@@ -272,6 +439,23 @@ export default function FlowCanvas({ onDeploySuccess, onDeployError }: FlowCanva
                 />
             </ReactFlow>
 
+            {/* Context Menu */}
+            {menu?.show && (
+                <ContextMenu
+                    id={menu.id}
+                    type={menu.type}
+                    top={menu.y}
+                    left={menu.x}
+                    onClose={() => setMenu(null)}
+                    onDelete={(id) => menu.type === 'edge' ? deleteEdge(id) : deleteNode(id)}
+                    onDuplicate={(id) => duplicateNode(id)}
+                    onAddNode={(type) => {
+                        const position = screenToFlowPosition({ x: menu.x, y: menu.y });
+                        addNodeAtPosition(type, position);
+                    }}
+                />
+            )}
+
             <LuaEditorModal
                 isOpen={isEditorOpen}
                 initialCode={editorCode}
@@ -279,5 +463,14 @@ export default function FlowCanvas({ onDeploySuccess, onDeployError }: FlowCanva
                 onSave={handleSaveScript}
             />
         </div>
+    );
+}
+
+// Wrap with ReactFlowProvider
+export default function FlowCanvas(props: FlowCanvasProps) {
+    return (
+        <ReactFlowProvider>
+            <FlowCanvasInner {...props} />
+        </ReactFlowProvider>
     );
 }
