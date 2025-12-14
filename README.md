@@ -1,7 +1,7 @@
 # MirthBR - Engine de Integração em Rust
 
 <p align="center">
-  <img src="frontend/public/mirth-logo.png" alt="MirthBR Logo" width="120" />
+  <img src="frontend/public/logo.png" alt="MirthBR Logo" width="120" />
 </p>
 
 Uma **engine de integração para saúde** de alta performance (alternativa ao Mirth Connect) construída com **Rust** (Backend) e **Next.js/React Flow** (Frontend). Projetada para processar mensagens HL7, FHIR e formatos personalizados com um editor visual baseado em fluxos.
