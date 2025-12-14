@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useEffect } from 'react';
+import { useFlowStore } from '@/stores/useFlowStore'; // Import store
 import ReactFlow, {
     Background,
     Controls,
@@ -34,11 +35,14 @@ import HTTPSenderNode from './nodes/HTTPSenderNode';
 import DatabaseWriterNode from './nodes/DatabaseWriterNode';
 import TCPSenderNode from './nodes/TCPSenderNode';
 
+import TestNode from './nodes/TestNode';
+
 import LuaEditorModal from '../editor/LuaEditorModal';
 import { Button } from '@/components/ui/button';
 import { exportToRust } from '@/lib/flow-compiler';
 import { deployChannel } from '@/lib/api';
 import { Play, Save } from 'lucide-react';
+import axios from 'axios';
 
 const nodeTypes = {
     // Sources
@@ -57,6 +61,8 @@ const nodeTypes = {
     httpSender: HTTPSenderNode,
     databaseWriter: DatabaseWriterNode,
     tcpSender: TCPSenderNode,
+    // Special
+    testNode: TestNode,
 };
 
 type NodeData = {
@@ -70,71 +76,26 @@ interface FlowCanvasProps {
     onDeployError?: () => void;
 }
 
-const initialNodesList: Node<NodeData>[] = [
-    {
-        id: '1',
-        type: 'httpListener',
-        position: { x: 100, y: 150 },
-        data: { label: 'HTTP Listener', port: 8080, path: '/api/messages' }
-    },
-    {
-        id: '2',
-        type: 'hl7Parser',
-        position: { x: 400, y: 100 },
-        data: { label: 'HL7 Parser', inputFormat: 'hl7v2', outputFormat: 'fhir' }
-    },
-    {
-        id: '3',
-        type: 'luaScript',
-        position: { x: 400, y: 280 },
-        data: {
-            label: 'Transform Data',
-            code: '-- Transform message\nlocal json = require("json")\nlocal data = json.decode(msg.content)\ndata.processed = true\nreturn json.encode(data)',
-        }
-    },
-    {
-        id: '4',
-        type: 'fileWriter',
-        position: { x: 750, y: 150 },
-        data: { label: 'File Writer', path: './output', filename: '${timestamp}.json' }
-    },
-];
+// Initial data moved to store
+// const initialNodesList ...
+// const initialEdges ...
 
-const initialEdges: Edge[] = [
-    { id: 'e1-2', source: '1', target: '2', animated: true },
-    { id: 'e2-3', source: '2', target: '3', animated: true },
-    { id: 'e3-4', source: '3', target: '4', animated: true },
-];
-
-export default function FlowCanvas({ nodeToAdd, onDeploySuccess, onDeployError }: FlowCanvasProps) {
-    const [nodes, setNodes, onNodesChange] = useNodesState<NodeData>(initialNodesList);
-    const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+export default function FlowCanvas({ onDeploySuccess, onDeployError }: FlowCanvasProps) { // Removed nodeToAdd
+    // Use Store
+    const {
+        nodes, edges, onNodesChange, onEdgesChange, onConnect,
+        setNodes, updateNodeData
+    } = useFlowStore();
 
     const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
     const [editorCode, setEditorCode] = useState("");
     const [isDeploying, setIsDeploying] = useState(false);
 
-    const onConnect = useCallback(
-        (params: Connection) => setEdges((eds) => addEdge({ ...params, animated: true }, eds)),
-        [setEdges],
-    );
-
-    // Handle inline data changes for any node
+    // handleDataChange uses store action now
     const handleDataChange = useCallback((nodeId: string, field: string, value: any) => {
-        setNodes((nds) => nds.map((node) => {
-            if (node.id === nodeId) {
-                return {
-                    ...node,
-                    data: {
-                        ...node.data,
-                        [field]: value,
-                    }
-                };
-            }
-            return node;
-        }));
-    }, [setNodes]);
+        updateNodeData(nodeId, field, value);
+    }, [updateNodeData]);
 
     const handleEditCode = useCallback((nodeId: string, currentCode: string) => {
         setEditingNodeId(nodeId);
@@ -144,30 +105,25 @@ export default function FlowCanvas({ nodeToAdd, onDeploySuccess, onDeployError }
 
     const handleSaveScript = (newCode: string) => {
         if (editingNodeId) {
-            setNodes((nds) => nds.map((node) => {
-                if (node.id === editingNodeId) {
-                    return {
-                        ...node,
-                        data: {
-                            ...node.data,
-                            code: newCode,
-                        }
-                    };
-                }
-                return node;
-            }));
+            updateNodeData(editingNodeId, 'code', newCode);
         }
         setIsEditorOpen(false);
         setEditingNodeId(null);
     };
 
+    const [channelId] = useState(() => crypto.randomUUID());
+
     const handleDeploy = async () => {
         setIsDeploying(true);
+        // Use consistent Channel ID
         const payload = exportToRust(nodes, edges, "My Channel");
+        payload.id = channelId;
+
         console.log("Deploying:", payload);
         try {
             await deployChannel(payload);
             onDeploySuccess?.();
+            // Show success toast or log?
         } catch (e) {
             onDeployError?.();
             console.error(e);
@@ -176,84 +132,84 @@ export default function FlowCanvas({ nodeToAdd, onDeploySuccess, onDeployError }
         }
     };
 
-    // Attach callbacks to all nodes
-    useEffect(() => {
-        setNodes((nds) => nds.map(node => {
-            const baseCallbacks = {
-                onDataChange: (field: string, value: any) => handleDataChange(node.id, field, value),
-            };
-
-            // Add code editing callback for nodes that need it
-            if (['luaScript', 'filter', 'databasePoller', 'databaseWriter'].includes(node.type || '')) {
-                return {
-                    ...node,
-                    data: {
-                        ...node.data,
-                        ...baseCallbacks,
-                        onEdit: (code: string) => handleEditCode(node.id, code),
-                        onEditCondition: (condition: string) => handleEditCode(node.id, condition),
-                        onEditQuery: (query: string) => handleEditCode(node.id, query),
-                    }
-                };
-            }
-
-            return {
-                ...node,
-                data: {
-                    ...node.data,
-                    ...baseCallbacks,
-                }
-            };
-        }));
-    }, [handleDataChange, handleEditCode, setNodes]);
-
-    // Handle adding new nodes from sidebar
-    useEffect(() => {
-        if (nodeToAdd) {
-            const newId = `node-${Date.now()}`;
-            const basePosition = { x: 300, y: 200 + Math.random() * 100 };
-
-            const nodeDefaults: Record<string, NodeData> = {
-                // Sources
-                httpListener: { label: 'HTTP Listener', port: 8080, path: '/' },
-                tcpListener: { label: 'TCP Listener', port: 9090 },
-                fileReader: { label: 'File Reader', path: '/data/input', pattern: '*.txt' },
-                databasePoller: { label: 'Database Poller', query: 'SELECT * FROM messages', interval: 60 },
-                // Processors
-                luaScript: { label: 'Lua Script', code: '-- Your code here\nreturn msg.content' },
-                mapper: { label: 'Field Mapper', mappings: [{ source: 'field1', target: 'newField1' }] },
-                filter: { label: 'Message Filter', condition: 'msg.type == "HL7"' },
-                router: { label: 'Content Router', routes: [{ name: 'Route A', condition: '' }] },
-                hl7Parser: { label: 'HL7 Parser', inputFormat: 'hl7v2', outputFormat: 'fhir' },
-                // Destinations
-                fileWriter: { label: 'File Writer', path: './output', filename: '${timestamp}.txt' },
-                httpSender: { label: 'HTTP Sender', url: 'https://api.example.com', method: 'POST' },
-                databaseWriter: { label: 'Database Writer', table: 'messages', mode: 'insert' },
-                tcpSender: { label: 'TCP Sender', host: '127.0.0.1', port: 9000 },
-            };
-
-            const defaultData = nodeDefaults[nodeToAdd] || { label: 'New Node' };
-
-            const newNode: Node<NodeData> = {
-                id: newId,
-                type: nodeToAdd,
-                position: basePosition,
-                data: {
-                    ...defaultData,
-                    onDataChange: (field: string, value: any) => handleDataChange(newId, field, value),
-                }
-            };
-
-            // Add code editing callbacks if needed
-            if (['luaScript', 'filter', 'databasePoller', 'databaseWriter'].includes(nodeToAdd)) {
-                newNode.data.onEdit = (code: string) => handleEditCode(newId, code);
-                newNode.data.onEditCondition = (condition: string) => handleEditCode(newId, condition);
-                newNode.data.onEditQuery = (query: string) => handleEditCode(newId, query);
-            }
-
-            setNodes((nds) => [...nds, newNode]);
+    const handleTest = useCallback(async (payloadType: string, payloadContent: string) => {
+        try {
+            await axios.post(`http://localhost:3001/api/channels/${channelId}/test`, {
+                payload_type: payloadType,
+                payload: payloadContent
+            });
+        } catch (e: any) {
+            console.error(e);
+            throw e; // Let node handle error display
         }
-    }, [nodeToAdd, handleDataChange, handleEditCode, setNodes]);
+    }, [channelId]);
+
+    // Callback injection Effect
+    // Replaces the old useEffect that mutated nodes deeply.
+    // To avoid infinite loops, we only update if callback is missing.
+    // However, since handleTest and handleEditCode depend on local state (editor open, channelId),
+    // we need to be careful.
+
+    // Ideally, we shouldn't mute nodes in store for callbacks.
+    // But for this refactor, let's keep it but ensure reference stability.
+    // Or simpler: Just update the specific node that needs it?
+
+    // Actually, updateNodeData in store merges data. 
+    // We can use a simpler approach: Just pass these handlers to the Context Provider? 
+    // But ReactFlow nodes don't easily consume context without wrapper.
+
+    // Let's stick to the Effect but optimize it: only update if missing.
+    useEffect(() => {
+        let changed = false;
+        const newNodes = nodes.map(node => {
+            const data = node.data;
+            let newData = { ...data };
+            let modified = false;
+
+            // Base Callbacks
+            if (!data.onDataChange) {
+                newData.onDataChange = (field: string, value: any) => handleDataChange(node.id, field, value);
+                modified = true;
+            }
+
+            // Edit Callbacks
+            if (['luaScript', 'filter', 'databasePoller', 'databaseWriter'].includes(node.type || '')) {
+                if (!data.onEdit) {
+                    newData.onEdit = (code: string) => handleEditCode(node.id, code);
+                    modified = true;
+                }
+                // ... others omitted for brevity, assuming standard edit is main one. 
+                // Full impl:
+                if (!data.onEditCondition) { newData.onEditCondition = (c: string) => handleEditCode(node.id, c); modified = true; }
+                if (!data.onEditQuery) { newData.onEditQuery = (q: string) => handleEditCode(node.id, q); modified = true; }
+            }
+
+            // Test Callback
+            if (node.type === 'testNode') {
+                // Check if onTest reference is stale? Hard to know. 
+                // We'll just overwrite it if we believe handleTest changed (it depends on channelId).
+                // But overwriting triggers store update -> render -> effect loop.
+                // We need handleTest to be stable or reference-independent.
+                // handleTest depends on channelId, which is stable (useState 1-time).
+                if (!data.onTest) {
+                    newData.onTest = handleTest;
+                    modified = true;
+                }
+            }
+
+            if (modified) {
+                changed = true;
+                return { ...node, data: newData };
+            }
+            return node;
+        });
+
+        if (changed) {
+            // Bulk update to avoid multiple renders
+            // setNodes from store replaces everything.
+            setNodes(newNodes);
+        }
+    }, [nodes, handleDataChange, handleEditCode, handleTest, setNodes]); // Dependencies need to be stable!
 
     return (
         <div className="w-full h-full relative">

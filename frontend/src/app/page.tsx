@@ -14,15 +14,6 @@ export default function Home() {
   const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [isInjectorOpen, setIsInjectorOpen] = useState(false);
 
-  // This will be passed to FlowCanvas to handle adding nodes
-  const [nodeToAdd, setNodeToAdd] = useState<string | null>(null);
-
-  const handleAddNode = useCallback((type: string) => {
-    setNodeToAdd(type);
-    // Reset after a short delay so the canvas can consume it
-    setTimeout(() => setNodeToAdd(null), 100);
-  }, []);
-
   const handleDeploySuccess = useCallback(() => {
     setLastDeployStatus('success');
     setTimeout(() => setLastDeployStatus('idle'), 5000);
@@ -44,11 +35,10 @@ export default function Home() {
         />
 
         <div className="flex-1 flex overflow-hidden relative">
-          <Sidebar onAddNode={handleAddNode} />
+          <Sidebar />
 
           <main className="flex-1 relative">
             <FlowCanvas
-              nodeToAdd={nodeToAdd}
               onDeploySuccess={handleDeploySuccess}
               onDeployError={handleDeployError}
             />

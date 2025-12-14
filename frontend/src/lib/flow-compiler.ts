@@ -14,7 +14,8 @@ type SourceConfig =
     | { type: 'http_listener'; config: { port: number; path?: string } }
     | { type: 'tcp_listener'; config: { port: number } }
     | { type: 'file_reader'; config: { path: string; pattern?: string } }
-    | { type: 'database_poller'; config: { query: string; interval: number } };
+    | { type: 'database_poller'; config: { query: string; interval: number } }
+    | { type: 'test_source'; config: { payloadType: string; payload: string } };
 
 type ProcessorConfig = {
     id: string;
@@ -38,7 +39,7 @@ type DestinationConfig = {
     );
 
 // Node type classification
-const sourceTypes = ['httpListener', 'tcpListener', 'fileReader', 'databasePoller'];
+const sourceTypes = ['httpListener', 'tcpListener', 'fileReader', 'databasePoller', 'testNode'];
 const processorTypes = ['luaScript', 'mapper', 'filter', 'router', 'hl7Parser'];
 const destinationTypes = ['fileWriter', 'httpSender', 'databaseWriter', 'tcpSender'];
 
@@ -76,6 +77,14 @@ function buildSourceConfig(node: Node): SourceConfig {
             return {
                 type: 'database_poller',
                 config: { query: data.query || '', interval: Number(data.interval) || 60 }
+            };
+        case 'testNode':
+            return {
+                type: 'test_source',
+                config: {
+                    payloadType: data.payloadType || 'hl7',
+                    payload: data.payload || ''
+                }
             };
         default:
             return { type: 'http_listener', config: { port: 8080 } };

@@ -7,6 +7,7 @@ use crate::engine::listeners::http::HttpListener;
 use crate::engine::processors::lua::LuaProcessor;
 use crate::engine::destinations::http::HttpSender;
 use crate::engine::destinations::file::FileWriter;
+use crate::engine::message::Message;
 
 use std::collections::VecDeque;
 use crate::storage::logs::LogEntry;
@@ -14,6 +15,7 @@ use chrono::Utc;
 
 pub struct ChannelManager {
     channels: Arc<Mutex<HashMap<Uuid, tokio::task::JoinHandle<()>>>>,
+    senders: Arc<Mutex<HashMap<Uuid, mpsc::Sender<Message>>>>,
     logs: Arc<Mutex<VecDeque<LogEntry>>>,
 }
 
@@ -21,6 +23,7 @@ impl ChannelManager {
     pub fn new() -> Self {
         Self {
             channels: Arc::new(Mutex::new(HashMap::new())),
+            senders: Arc::new(Mutex::new(HashMap::new())),
             logs: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
         }
     }
@@ -54,6 +57,9 @@ impl ChannelManager {
         // 1. Create communication channel (MPSC)
         let (tx, mut rx) = mpsc::channel(100);
 
+        // Store sender for manual injection
+        self.senders.lock().unwrap().insert(channel_id, tx.clone());
+
         // 2. Start Source Listener
         match channel.source {
             SourceConfig::Http { port, .. } => {
@@ -66,6 +72,10 @@ impl ChannelManager {
                 
                 // Log startup
                 self.add_log("INFO", format!("Channel {} started on port {}", channel.name, port), Some(channel_id));
+            },
+            SourceConfig::Test { payload_type, .. } => {
+                // No listener to start, just waiting for manual injection
+                self.add_log("INFO", format!("Test Channel {} ready for manual injection (Format: {})", channel.name, payload_type), Some(channel_id));
             },
             _ => tracing::warn!("Unsupported source type"),
         }
@@ -219,6 +229,22 @@ impl ChannelManager {
         self.channels.lock().unwrap().insert(channel_id, handle);
 
         Ok(())
+    }
+
+    pub async fn inject_message(&self, channel_id: Uuid, payload: String) -> anyhow::Result<()> {
+        let sender = {
+            let senders = self.senders.lock().unwrap();
+            senders.get(&channel_id).cloned()
+        };
+
+        if let Some(tx) = sender {
+             let msg = crate::engine::message::Message::new(channel_id, payload);
+            tx.send(msg).await.map_err(|_| anyhow::anyhow!("Channel receiver dropped"))?;
+            self.add_log("INFO", "Manual message injected".to_string(), Some(channel_id));
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Channel not found or not running"))
+        }
     }
 }
 

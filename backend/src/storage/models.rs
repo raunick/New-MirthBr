@@ -36,6 +36,8 @@ pub enum SourceConfig {
     File { path: String, pattern: Option<String> },
     #[serde(rename = "database_poller")]
     Database { query: String, interval: u64 },
+    #[serde(rename = "test_source")]
+    Test { payload_type: String, payload: String },
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

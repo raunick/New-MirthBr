@@ -60,6 +60,7 @@ use tower_http::cors::CorsLayer;
         .route("/api/health", get(health_check))
         .route("/api/channels", post(api::handlers::channels::create_channel))
         .route("/api/channels", get(api::handlers::channels::list_channels))
+        .route("/api/channels/:id/test", post(api::handlers::test::test_channel))
         .route("/api/logs", get(api::handlers::logs::get_logs))
         .layer(CorsLayer::permissive()) // Deploy CORS layer *before* state to ensure it wraps everything
         .with_state(channel_manager);

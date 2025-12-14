@@ -4,7 +4,7 @@ import React, { useState } from 'react';
 import {
     Radio, Network, FileInput, Database,
     Code2, ArrowRightLeft, Filter, GitBranch, FileJson,
-    FileText, Globe,
+    FileText, Globe, PlayCircle,
     Plus, Layers, ChevronDown, ChevronRight
 } from 'lucide-react';
 
@@ -58,6 +58,13 @@ const nodeCategories: NodeCategory[] = [
                 icon: Database,
                 color: 'var(--node-source-db)',
                 description: 'Poll database for new data'
+            },
+            {
+                type: 'testNode',
+                label: 'Test Node',
+                icon: PlayCircle,
+                color: 'var(--primary)',
+                description: 'Manual message trigger'
             },
         ]
     },
@@ -138,7 +145,10 @@ const nodeCategories: NodeCategory[] = [
     },
 ];
 
-export default function Sidebar({ onAddNode }: SidebarProps) {
+import { useFlowStore } from '@/stores/useFlowStore';
+
+export default function Sidebar() {
+    const addNode = useFlowStore((state) => state.addNode);
     const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({
         'Sources': true,
         'Processors': true,
@@ -196,7 +206,7 @@ export default function Sidebar({ onAddNode }: SidebarProps) {
                                 {category.nodes.map((node) => (
                                     <button
                                         key={node.type}
-                                        onClick={() => onAddNode?.(node.type)}
+                                        onClick={() => addNode(node.type)}
                                         className="w-full p-2.5 glass-card flex items-center gap-3 text-left group cursor-grab active:cursor-grabbing hover:scale-[1.02] transition-transform"
                                     >
                                         <div
