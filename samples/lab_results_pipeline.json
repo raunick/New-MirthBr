@@ -1,0 +1,81 @@
+{
+    "id": "lab-results-pipeline-001",
+    "name": "Lab Results Pipeline - ORU Messages",
+    "description": "Pipeline de processamento de resultados laboratoriais (ORU^R01) com filtragem por tipo de exame, transformação e roteamento condicional",
+    "enabled": true,
+    "source": {
+        "type": "tcp_listener",
+        "config": {
+            "port": 2575,
+            "protocol": "MLLP"
+        }
+    },
+    "processors": [
+        {
+            "id": "proc-ack-generator",
+            "name": "Gerador de ACK",
+            "type": "lua_script",
+            "config": {
+                "code": "-- Gerar ACK HL7 para confirmação de recebimento\nlocal hl7 = require('hl7')\nlocal json = require('json')\n\n-- Guardar mensagem original\nlocal original = msg.content\n\n-- Parse para extrair MSH\nlocal parsed = hl7.parse(original)\n\nlog.info('Mensagem ORU recebida - gerando ACK')\nlog.info('Controle: ' .. (parsed.MSH and parsed.MSH[10] or 'N/A'))\n\n-- Continuar processamento com mensagem original\nreturn original"
+            }
+        },
+        {
+            "id": "proc-hl7-to-json",
+            "name": "HL7 to JSON Converter",
+            "type": "lua_script",
+            "config": {
+                "code": "-- Converter HL7 para JSON estruturado\nlocal hl7 = require('hl7')\nlocal json = require('json')\n\nlocal json_output = hl7.to_json(msg.content)\nlocal data = json.decode(json_output)\n\n-- Extrair informações do OBR (Observation Request)\nif data.OBR then\n    log.info('Tipo de exame: ' .. (data.OBR[4] or 'Desconhecido'))\n    log.info('Status: ' .. (data.OBR[25] or 'N/A'))\nend\n\n-- Extrair resultados do OBX\nif data.OBX then\n    local count = type(data.OBX) == 'table' and #data.OBX or 1\n    log.info('Número de resultados OBX: ' .. count)\nend\n\nreturn json.encode(data)"
+            }
+        },
+        {
+            "id": "proc-critical-check",
+            "name": "Verificador de Resultados Críticos",
+            "type": "lua_script",
+            "config": {
+                "code": "-- Identificar resultados críticos que requerem ação imediata\nlocal json = require('json')\nlocal data = json.decode(msg.content)\n\nlocal criticalResults = {}\nlocal hasCritical = false\n\n-- Definir limites críticos comuns\nlocal criticalLimits = {\n    GLUC = {low = 50, high = 400, unit = 'mg/dL'},\n    K = {low = 2.5, high = 6.5, unit = 'mEq/L'},\n    NA = {low = 120, high = 160, unit = 'mEq/L'},\n    HGB = {low = 7.0, high = 20.0, unit = 'g/dL'},\n    PLT = {low = 50000, high = 1000000, unit = '/uL'}\n}\n\n-- Verificar OBX para resultados críticos\nif data.OBX then\n    local obxList = type(data.OBX[1]) == 'table' and data.OBX or {data.OBX}\n    \n    for i, obx in ipairs(obxList) do\n        local testCode = obx[3] or ''\n        local value = tonumber(obx[5]) or 0\n        local abnormalFlag = obx[8] or ''\n        \n        -- Verificar se é crítico\n        if abnormalFlag == 'H' or abnormalFlag == 'HH' or abnormalFlag == 'L' or abnormalFlag == 'LL' then\n            table.insert(criticalResults, {\n                test = testCode,\n                value = value,\n                flag = abnormalFlag\n            })\n            hasCritical = true\n        end\n    end\nend\n\n-- Adicionar metadata de alerta\ndata['_alerts'] = {\n    hasCriticalResults = hasCritical,\n    criticalCount = #criticalResults,\n    criticalDetails = criticalResults,\n    checkedAt = os.date('%Y-%m-%dT%H:%M:%SZ')\n}\n\nif hasCritical then\n    log.warn('*** ALERTA: ' .. #criticalResults .. ' resultado(s) crítico(s) detectado(s)! ***')\nelse\n    log.info('Nenhum resultado crítico detectado')\nend\n\nreturn json.encode(data)"
+            }
+        },
+        {
+            "id": "proc-formatter",
+            "name": "Formatador de Saída",
+            "type": "lua_script",
+            "config": {
+                "code": "-- Formatar para padrão de saída do laboratório\nlocal json = require('json')\nlocal data = json.decode(msg.content)\n\n-- Criar estrutura padronizada\nlocal output = {\n    messageId = data.MSH and data.MSH[10] or 'unknown',\n    messageType = 'LAB_RESULT',\n    timestamp = os.date('%Y-%m-%dT%H:%M:%SZ'),\n    patient = {},\n    order = {},\n    results = {},\n    alerts = data['_alerts'] or {}\n}\n\n-- Dados do paciente\nif data.PID then\n    output.patient = {\n        id = data.PID[3] or '',\n        name = data.PID[5] or '',\n        dob = data.PID[7] or '',\n        gender = data.PID[8] or ''\n    }\nend\n\n-- Dados do pedido\nif data.OBR then\n    output.order = {\n        id = data.OBR[2] or data.OBR[3] or '',\n        testCode = data.OBR[4] or '',\n        collectionTime = data.OBR[7] or '',\n        status = data.OBR[25] or 'F'\n    }\nend\n\n-- Resultados\nif data.OBX then\n    local obxList = type(data.OBX[1]) == 'table' and data.OBX or {data.OBX}\n    for i, obx in ipairs(obxList) do\n        table.insert(output.results, {\n            sequence = i,\n            testCode = obx[3] or '',\n            value = obx[5] or '',\n            units = obx[6] or '',\n            referenceRange = obx[7] or '',\n            abnormalFlag = obx[8] or 'N',\n            status = obx[11] or 'F'\n        })\n    end\nend\n\nlog.info('Resultado formatado: ' .. #output.results .. ' observações')\n\nreturn json.encode(output)"
+            }
+        }
+    ],
+    "destinations": [
+        {
+            "id": "dest-lis-database",
+            "name": "LIS Database",
+            "type": "database_writer",
+            "config": {
+                "table": "lab_results",
+                "mode": "insert",
+                "connectionString": "postgresql://localhost:5432/lis"
+            }
+        },
+        {
+            "id": "dest-file-archive",
+            "name": "Arquivo de Backup",
+            "type": "file_writer",
+            "config": {
+                "path": "./archive/lab/${date}/${messageId}.json"
+            }
+        },
+        {
+            "id": "dest-alert-webhook",
+            "name": "Webhook de Alertas Críticos",
+            "type": "http_sender",
+            "config": {
+                "url": "http://localhost:9001/api/alerts/critical",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "X-Alert-Priority": "high"
+                },
+                "condition": "data._alerts.hasCriticalResults == true"
+            }
+        }
+    ]
+}

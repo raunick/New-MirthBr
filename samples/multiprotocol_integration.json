@@ -1,0 +1,199 @@
+{
+    "id": "multiprotocol-integration-001",
+    "name": "Multi-Protocol Integration Hub",
+    "description": "Hub de integração multi-protocolo demonstrando TCP, HTTP e File sources com transformações e múltiplos destinos",
+    "enabled": true,
+    "channels": [
+        {
+            "id": "channel-tcp-hl7",
+            "name": "TCP HL7 Receiver",
+            "description": "Recebe mensagens HL7 via TCP/MLLP para interfaces com sistemas legados",
+            "source": {
+                "type": "tcp_listener",
+                "config": {
+                    "port": 2575,
+                    "protocol": "MLLP",
+                    "timeout": 30000
+                }
+            },
+            "processors": [
+                {
+                    "id": "tcp-proc-mllp-strip",
+                    "name": "MLLP Wrapper Stripper",
+                    "type": "lua_script",
+                    "config": {
+                        "code": "-- Remover wrapper MLLP se presente\nlocal content = msg.content\n\n-- MLLP usa VT (0x0B) no início e FS+CR (0x1C, 0x0D) no final\nlocal startByte = string.char(0x0B)\nlocal endBytes = string.char(0x1C) .. string.char(0x0D)\n\nif content:sub(1,1) == startByte then\n    content = content:sub(2)\n    log.info('Removido byte de início MLLP')\nend\n\nlocal endPos = content:find(string.char(0x1C))\nif endPos then\n    content = content:sub(1, endPos - 1)\n    log.info('Removidos bytes de fim MLLP')\nend\n\nreturn content"
+                    }
+                },
+                {
+                    "id": "tcp-proc-parse",
+                    "name": "HL7 Parser",
+                    "type": "lua_script",
+                    "config": {
+                        "code": "local hl7 = require('hl7')\nlocal json_output = hl7.to_json(msg.content)\nlog.info('Mensagem TCP/HL7 convertida para JSON')\nreturn json_output"
+                    }
+                }
+            ],
+            "destinations": [
+                {
+                    "id": "tcp-dest-queue",
+                    "name": "Message Queue",
+                    "type": "http_sender",
+                    "config": {
+                        "url": "http://localhost:9000/queue/hl7",
+                        "method": "POST"
+                    }
+                }
+            ]
+        },
+        {
+            "id": "channel-http-rest",
+            "name": "HTTP REST Gateway",
+            "description": "API REST para integração com sistemas modernos",
+            "source": {
+                "type": "http_listener",
+                "config": {
+                    "port": 8080,
+                    "path": "/api/v1/messages",
+                    "methods": [
+                        "POST",
+                        "PUT"
+                    ]
+                }
+            },
+            "processors": [
+                {
+                    "id": "http-proc-validate",
+                    "name": "Request Validator",
+                    "type": "lua_script",
+                    "config": {
+                        "code": "-- Validar requisição REST\nlocal json = require('json')\nlocal data = json.decode(msg.content)\n\nlocal errors = {}\n\n-- Validar campos obrigatórios\nif not data.messageType then\n    table.insert(errors, 'Campo messageType é obrigatório')\nend\n\nif not data.payload then\n    table.insert(errors, 'Campo payload é obrigatório')\nend\n\nif #errors > 0 then\n    local errorResponse = {\n        success = false,\n        errors = errors,\n        timestamp = os.date('%Y-%m-%dT%H:%M:%SZ')\n    }\n    log.error('Validação falhou: ' .. table.concat(errors, ', '))\n    -- Em produção, você retornaria um erro HTTP aqui\n    return json.encode(errorResponse)\nend\n\nlog.info('Requisição REST validada com sucesso')\nreturn msg.content"
+                    }
+                },
+                {
+                    "id": "http-proc-enrich",
+                    "name": "Request Enricher",
+                    "type": "lua_script",
+                    "config": {
+                        "code": "local json = require('json')\nlocal data = json.decode(msg.content)\n\n-- Adicionar metadados de rastreamento\ndata.tracking = {\n    receivedAt = os.date('%Y-%m-%dT%H:%M:%SZ'),\n    channel = 'http-rest-gateway',\n    correlationId = 'HTTP-' .. os.time() .. '-' .. math.random(1000, 9999)\n}\n\nlog.info('Mensagem enriquecida. Correlation ID: ' .. data.tracking.correlationId)\n\nreturn json.encode(data)"
+                    }
+                }
+            ],
+            "destinations": [
+                {
+                    "id": "http-dest-db",
+                    "name": "Database Storage",
+                    "type": "database_writer",
+                    "config": {
+                        "connectionString": "postgresql://localhost:5432/integration",
+                        "table": "messages",
+                        "mode": "insert"
+                    }
+                },
+                {
+                    "id": "http-dest-webhook",
+                    "name": "Event Webhook",
+                    "type": "http_sender",
+                    "config": {
+                        "url": "http://localhost:9001/webhooks/messages",
+                        "method": "POST",
+                        "headers": {
+                            "Content-Type": "application/json",
+                            "X-Source": "MirthBR-REST"
+                        }
+                    }
+                }
+            ]
+        },
+        {
+            "id": "channel-file-csv",
+            "name": "File CSV Importer",
+            "description": "Monitora diretório para importação de arquivos CSV em lote",
+            "source": {
+                "type": "file_reader",
+                "config": {
+                    "path": "./input/csv",
+                    "pattern": "*.csv",
+                    "pollInterval": 10000,
+                    "moveAfterRead": "./input/csv/processed"
+                }
+            },
+            "processors": [
+                {
+                    "id": "file-proc-csv-parse",
+                    "name": "CSV Parser",
+                    "type": "lua_script",
+                    "config": {
+                        "code": "-- Parser de CSV para JSON\nlocal json = require('json')\nlocal content = msg.content\nlocal lines = {}\nlocal records = {}\n\n-- Dividir em linhas\nfor line in content:gmatch('[^\\n]+') do\n    table.insert(lines, line)\nend\n\nif #lines < 2 then\n    log.error('CSV inválido: precisa ter pelo menos cabeçalho e uma linha de dados')\n    return json.encode({error = 'CSV inválido', lines = #lines})\nend\n\n-- Primeira linha são os headers\nlocal headers = {}\nfor header in lines[1]:gmatch('[^,]+') do\n    header = header:gsub('^%s+', ''):gsub('%s+$', ''):gsub('\"', '')\n    table.insert(headers, header)\nend\n\nlog.info('CSV Headers: ' .. table.concat(headers, ', '))\n\n-- Processar linhas de dados\nfor i = 2, #lines do\n    local record = {}\n    local col = 1\n    for value in lines[i]:gmatch('[^,]+') do\n        value = value:gsub('^%s+', ''):gsub('%s+$', ''):gsub('\"', '')\n        if headers[col] then\n            record[headers[col]] = value\n        end\n        col = col + 1\n    end\n    table.insert(records, record)\nend\n\nlocal output = {\n    source = msg.metadata and msg.metadata.filename or 'unknown.csv',\n    recordCount = #records,\n    headers = headers,\n    records = records,\n    processedAt = os.date('%Y-%m-%dT%H:%M:%SZ')\n}\n\nlog.info('CSV processado: ' .. #records .. ' registros')\n\nreturn json.encode(output)"
+                    }
+                },
+                {
+                    "id": "file-proc-batch-split",
+                    "name": "Batch Splitter",
+                    "type": "lua_script",
+                    "config": {
+                        "code": "-- Preparar para processamento em lote\nlocal json = require('json')\nlocal data = json.decode(msg.content)\n\n-- Adicionar informações de lote\ndata.batch = {\n    id = 'BATCH-' .. os.time(),\n    totalRecords = data.recordCount,\n    status = 'ready_for_processing'\n}\n\nlog.info('Lote preparado: ' .. data.batch.id .. ' com ' .. data.batch.totalRecords .. ' registros')\n\nreturn json.encode(data)"
+                    }
+                }
+            ],
+            "destinations": [
+                {
+                    "id": "file-dest-db",
+                    "name": "Batch Database Import",
+                    "type": "database_writer",
+                    "config": {
+                        "connectionString": "postgresql://localhost:5432/integration",
+                        "table": "batch_imports",
+                        "mode": "insert"
+                    }
+                },
+                {
+                    "id": "file-dest-archive",
+                    "name": "Archive Storage",
+                    "type": "file_writer",
+                    "config": {
+                        "path": "./archive/csv/${date}/${batchId}.json"
+                    }
+                }
+            ]
+        },
+        {
+            "id": "channel-db-poller",
+            "name": "Database Poll Channel",
+            "description": "Consulta periódica ao banco para buscar novos registros",
+            "source": {
+                "type": "database_poller",
+                "config": {
+                    "connectionString": "postgresql://localhost:5432/integration",
+                    "query": "SELECT * FROM pending_messages WHERE status = 'new' LIMIT 100",
+                    "pollInterval": 30000,
+                    "updateQuery": "UPDATE pending_messages SET status = 'processing' WHERE id = $id"
+                }
+            },
+            "processors": [
+                {
+                    "id": "db-proc-transform",
+                    "name": "DB Record Transformer",
+                    "type": "lua_script",
+                    "config": {
+                        "code": "-- Transformar registro do banco para formato de saída\nlocal json = require('json')\nlocal records = json.decode(msg.content)\n\nlocal transformed = {}\n\nfor i, record in ipairs(records) do\n    table.insert(transformed, {\n        id = record.id,\n        messageType = record.message_type,\n        payload = record.payload,\n        priority = record.priority or 'normal',\n        createdAt = record.created_at,\n        processedAt = os.date('%Y-%m-%dT%H:%M:%SZ')\n    })\nend\n\nlog.info('Transformados ' .. #transformed .. ' registros do banco')\n\nreturn json.encode(transformed)"
+                    }
+                }
+            ],
+            "destinations": [
+                {
+                    "id": "db-dest-external",
+                    "name": "External System",
+                    "type": "http_sender",
+                    "config": {
+                        "url": "http://localhost:9002/api/receive",
+                        "method": "POST",
+                        "headers": {
+                            "Content-Type": "application/json"
+                        }
+                    }
+                }
+            ]
+        }
+    ]
+}

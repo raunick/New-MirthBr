@@ -3,12 +3,15 @@
 import Header from "@/components/layout/Header";
 import Sidebar from "@/components/layout/Sidebar";
 import FlowCanvas from "@/components/flow/FlowCanvas";
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { ReactFlowProvider } from "reactflow";
 import LogViewer from "@/components/dashboard/LogViewer";
 import MessageInjectorModal from "@/components/tools/MessageInjectorModal";
+import LoginPage from "@/components/auth/LoginPage";
+import AuthProvider from "@/components/auth/AuthProvider";
+import { useAuthStore } from "@/stores/useAuthStore";
 
-export default function Home() {
+function MainApp() {
   const [isConnected] = useState(true);
   const [lastDeployStatus, setLastDeployStatus] = useState<'success' | 'error' | 'idle'>('idle');
   const [isLogsOpen, setIsLogsOpen] = useState(false);
@@ -50,3 +53,55 @@ export default function Home() {
     </ReactFlowProvider>
   );
 }
+
+export default function Home() {
+  const { isAuthenticated, checkSession, logout } = useAuthStore();
+  const [isClient, setIsClient] = useState(false);
+  const [showLogin, setShowLogin] = useState(true);
+
+  // Handle hydration
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
+
+  // Check session on mount
+  useEffect(() => {
+    if (isClient) {
+      const sessionValid = checkSession();
+      setShowLogin(!sessionValid);
+    }
+  }, [isClient, checkSession]);
+
+  // Handle logout (from session expiry or manual)
+  const handleLogout = useCallback(() => {
+    logout();
+    setShowLogin(true);
+  }, [logout]);
+
+  // Handle successful login
+  const handleLoginSuccess = useCallback(() => {
+    setShowLogin(false);
+  }, []);
+
+  // Prevent hydration mismatch
+  if (!isClient) {
+    return (
+      <div className="h-screen w-screen flex items-center justify-center bg-[var(--background)]">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[var(--primary)]" />
+      </div>
+    );
+  }
+
+  // Show login if not authenticated
+  if (showLogin || !isAuthenticated) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
+  // Show main app with auth provider
+  return (
+    <AuthProvider onLogout={handleLogout}>
+      <MainApp />
+    </AuthProvider>
+  );
+}
+

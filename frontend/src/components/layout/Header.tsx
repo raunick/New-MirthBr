@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Zap, Settings } from 'lucide-react';
+import { Activity, Zap, Settings, LogOut, User } from 'lucide-react';
 import axios from 'axios';
 import SettingsModal from './SettingsModal';
+import { useAuthStore } from '@/stores/useAuthStore';
 
 interface HeaderProps {
     isConnected?: boolean;
@@ -13,6 +14,7 @@ interface HeaderProps {
 export default function Header({ isConnected: initialConnected = false, lastDeployStatus = 'idle', onToggleLogs, onTestChannel }: HeaderProps) {
     const [isConnected, setIsConnected] = useState(initialConnected);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const { username, logout } = useAuthStore();
 
     useEffect(() => {
         const checkHealth = async () => {
@@ -28,6 +30,14 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
         const interval = setInterval(checkHealth, 5000);
         return () => clearInterval(interval);
     }, []);
+
+    const handleLogout = () => {
+        if (confirm('Tem certeza que deseja sair?')) {
+            logout();
+            window.location.reload();
+        }
+    };
+
     return (
         <>
             <header className="h-16 glass border-b border-[var(--glass-border)] flex items-center justify-between px-6">
@@ -80,6 +90,14 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
                         </div>
                     )}
 
+                    {/* User Info */}
+                    {username && (
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--background-secondary)]/30 border border-[var(--glass-border)]">
+                            <User size={14} className="text-[var(--foreground-muted)]" />
+                            <span className="text-sm text-[var(--foreground-muted)] capitalize">{username}</span>
+                        </div>
+                    )}
+
                     {/* Settings Button */}
                     <button
                         onClick={() => setIsSettingsOpen(true)}
@@ -87,6 +105,16 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
                         title="Configurações"
                     >
                         <Settings size={20} className="text-[var(--foreground-muted)]" />
+                    </button>
+
+                    {/* Logout Button */}
+                    <button
+                        onClick={handleLogout}
+                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-all text-[var(--foreground-muted)] hover:text-red-400"
+                        title="Sair"
+                    >
+                        <LogOut size={16} />
+                        <span className="text-xs font-medium">Sair</span>
                     </button>
                 </div>
             </header>
@@ -99,4 +127,3 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
         </>
     );
 }
-

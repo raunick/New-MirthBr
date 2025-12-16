@@ -1,0 +1,71 @@
+{
+    "id": "hl7-admission-2024-001",
+    "name": "HL7 Admission Flow - Complete",
+    "description": "Fluxo completo de processamento de admissão hospitalar com transformação HL7 para FHIR/JSON, validação, logging e múltiplos destinos",
+    "enabled": true,
+    "source": {
+        "type": "http_listener",
+        "config": {
+            "port": 8081,
+            "path": "/hl7/admission"
+        }
+    },
+    "processors": [
+        {
+            "id": "proc-logger-input",
+            "name": "Log Entrada",
+            "type": "lua_script",
+            "config": {
+                "code": "-- Logging de entrada para auditoria\nlog.info('=========================================')\nlog.info('Nova mensagem HL7 recebida')\nlog.info('Timestamp: ' .. os.date('%Y-%m-%d %H:%M:%S'))\nlog.info('Tamanho: ' .. #msg.content .. ' bytes')\nlog.info('=========================================')\nreturn msg.content"
+            }
+        },
+        {
+            "id": "proc-hl7-parser",
+            "name": "HL7 Parser",
+            "type": "lua_script",
+            "config": {
+                "code": "-- Converter HL7 v2 para JSON estruturado\nlocal hl7 = require('hl7')\nlocal json = require('json')\n\n-- Parse da mensagem HL7\nlocal parsed = hl7.parse(msg.content)\nlocal json_output = hl7.to_json(msg.content)\n\nlog.info('HL7 convertido para JSON com sucesso')\nlog.info('Tipo da mensagem: ' .. (parsed.MSH and parsed.MSH[9] or 'desconhecido'))\n\nreturn json_output"
+            }
+        },
+        {
+            "id": "proc-validator",
+            "name": "Validador de Dados",
+            "type": "lua_script",
+            "config": {
+                "code": "-- Validação de campos obrigatórios\nlocal json = require('json')\nlocal data = json.decode(msg.content)\n\nlocal errors = {}\n\n-- Validar PID (Patient Identification)\nif not data.PID then\n    table.insert(errors, 'Segmento PID ausente')\nelse\n    if not data.PID[3] or data.PID[3] == '' then\n        table.insert(errors, 'ID do paciente (PID-3) é obrigatório')\n    end\n    if not data.PID[5] or data.PID[5] == '' then\n        table.insert(errors, 'Nome do paciente (PID-5) é obrigatório')\n    end\nend\n\n-- Validar PV1 (Patient Visit) para admissões\nif not data.PV1 then\n    table.insert(errors, 'Segmento PV1 ausente para admissão')\nend\n\nif #errors > 0 then\n    log.error('Validação falhou: ' .. table.concat(errors, '; '))\n    data['_validationErrors'] = errors\n    data['_isValid'] = false\nelse\n    log.info('Validação OK - Todos os campos obrigatórios presentes')\n    data['_isValid'] = true\nend\n\nreturn json.encode(data)"
+            }
+        },
+        {
+            "id": "proc-enrich",
+            "name": "Enriquecimento de Dados",
+            "type": "lua_script",
+            "config": {
+                "code": "-- Enriquecer dados com metadados do sistema\nlocal json = require('json')\nlocal data = json.decode(msg.content)\n\n-- Adicionar metadados de processamento\ndata['_metadata'] = {\n    processedAt = os.date('%Y-%m-%dT%H:%M:%SZ'),\n    processedBy = 'MirthBR Engine',\n    version = '1.0.0',\n    channelId = 'hl7-admission-2024-001'\n}\n\n-- Padronizar formato de nome do paciente\nif data.PID and data.PID[5] then\n    local name = data.PID[5]\n    data['_patient'] = {\n        originalName = name,\n        formattedName = string.gsub(name, '%^', ' ')\n    }\nend\n\nlog.info('Dados enriquecidos com metadados do sistema')\n\nreturn json.encode(data)"
+            }
+        }
+    ],
+    "destinations": [
+        {
+            "id": "dest-file-json",
+            "name": "Arquivo JSON Local",
+            "type": "file_writer",
+            "config": {
+                "path": "./output/admissions/${date}_admission.json",
+                "append": true
+            }
+        },
+        {
+            "id": "dest-http-ehr",
+            "name": "Sistema EHR",
+            "type": "http_sender",
+            "config": {
+                "url": "http://localhost:9000/api/v1/admissions",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "X-Source": "MirthBR"
+                }
+            }
+        }
+    ]
+}

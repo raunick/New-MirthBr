@@ -1,0 +1,221 @@
+{
+    "id": "test-node-examples-001",
+    "name": "Test Node Examples - Cenários de Teste",
+    "description": "Exemplos de uso do Test Node com diferentes formatos de payload para desenvolvimento e testes de integração",
+    "enabled": true,
+    "testPayloads": {
+        "hl7_adt_a01": {
+            "description": "Mensagem HL7 ADT^A01 - Admissão de Paciente",
+            "format": "hl7",
+            "content": "MSH|^~\\&|HIS|HOSPITAL|MIRTHBR|ENGINE|202312140800||ADT^A01|MSG00001|P|2.3\nEVN|A01|202312140800\nPID|||123456^^^HOSP^MR||SILVA^MARIA^LUIZA||19850315|F|||RUA DAS FLORES 123^^SAO PAULO^SP^01234567^BR||5511912345678\nPV1||I|UTI^101^A^HOSPITAL||||1234^ALMEIDA^CARLOS^EDUARDO^DR|||MED||||||||1234567890|||||||||||||202312140800"
+        },
+        "hl7_adt_a03": {
+            "description": "Mensagem HL7 ADT^A03 - Alta de Paciente",
+            "format": "hl7",
+            "content": "MSH|^~\\&|HIS|HOSPITAL|MIRTHBR|ENGINE|202312150900||ADT^A03|MSG00002|P|2.3\nEVN|A03|202312150900\nPID|||123456^^^HOSP^MR||SILVA^MARIA^LUIZA||19850315|F\nPV1||I|UTI^101^A^HOSPITAL||||1234^ALMEIDA^CARLOS^EDUARDO^DR|||MED||||||||1234567890|||||||||||||202312140800|202312150900"
+        },
+        "hl7_oru_r01": {
+            "description": "Mensagem HL7 ORU^R01 - Resultado de Laboratório",
+            "format": "hl7",
+            "content": "MSH|^~\\&|LIS|LAB|MIRTHBR|ENGINE|202312141000||ORU^R01|LAB00001|P|2.3\nPID|||123456^^^HOSP^MR||SILVA^MARIA^LUIZA||19850315|F\nOBR|1|ORD001|LAB001|CBC^Hemograma Completo^LOCAL|||202312140800|||||||202312140830\nOBX|1|NM|WBC^Leucócitos^LOCAL||7500|/uL|4500-11000|N|||F\nOBX|2|NM|RBC^Hemácias^LOCAL||4.5|x10^6/uL|4.0-5.5|N|||F\nOBX|3|NM|HGB^Hemoglobina^LOCAL||13.5|g/dL|12.0-16.0|N|||F\nOBX|4|NM|HCT^Hematócrito^LOCAL||40|%|36-46|N|||F\nOBX|5|NM|PLT^Plaquetas^LOCAL||250000|/uL|150000-400000|N|||F"
+        },
+        "hl7_oru_critical": {
+            "description": "Mensagem HL7 ORU^R01 - Resultado Crítico (Potássio Alto)",
+            "format": "hl7",
+            "content": "MSH|^~\\&|LIS|LAB|MIRTHBR|ENGINE|202312141100||ORU^R01|LAB00002|P|2.3\nPID|||789012^^^HOSP^MR||SANTOS^JOSE^CARLOS||19700520|M\nOBR|1|ORD002|LAB002|CHEM^Bioquímica^LOCAL|||202312141030\nOBX|1|NM|K^Potássio^LOCAL||7.2|mEq/L|3.5-5.0|HH|||F\nOBX|2|NM|NA^Sódio^LOCAL||140|mEq/L|136-145|N|||F\nOBX|3|NM|GLUC^Glicose^LOCAL||95|mg/dL|70-100|N|||F"
+        },
+        "json_patient": {
+            "description": "JSON - Cadastro de Paciente FHIR-like",
+            "format": "json",
+            "content": {
+                "resourceType": "Patient",
+                "id": "123456",
+                "active": true,
+                "name": [
+                    {
+                        "use": "official",
+                        "family": "Silva",
+                        "given": [
+                            "Maria",
+                            "Luiza"
+                        ]
+                    }
+                ],
+                "telecom": [
+                    {
+                        "system": "phone",
+                        "value": "+55 11 91234-5678",
+                        "use": "mobile"
+                    },
+                    {
+                        "system": "email",
+                        "value": "maria.silva@email.com"
+                    }
+                ],
+                "gender": "female",
+                "birthDate": "1985-03-15",
+                "address": [
+                    {
+                        "use": "home",
+                        "line": [
+                            "Rua das Flores, 123"
+                        ],
+                        "city": "São Paulo",
+                        "state": "SP",
+                        "postalCode": "01234-567",
+                        "country": "BR"
+                    }
+                ]
+            }
+        },
+        "json_order": {
+            "description": "JSON - Pedido de Exame",
+            "format": "json",
+            "content": {
+                "orderId": "ORD-2024-001234",
+                "orderDate": "2024-01-15T10:30:00Z",
+                "status": "pending",
+                "priority": "routine",
+                "patient": {
+                    "id": "123456",
+                    "name": "Maria Luiza Silva"
+                },
+                "requester": {
+                    "id": "1234",
+                    "name": "Dr. Carlos Eduardo Almeida",
+                    "specialty": "Clínica Geral"
+                },
+                "tests": [
+                    {
+                        "code": "CBC",
+                        "name": "Hemograma Completo",
+                        "instructions": "Jejum de 8 horas"
+                    },
+                    {
+                        "code": "GLUC",
+                        "name": "Glicemia em Jejum",
+                        "instructions": "Jejum de 8 horas"
+                    },
+                    {
+                        "code": "LIPID",
+                        "name": "Perfil Lipídico",
+                        "instructions": "Jejum de 12 horas"
+                    }
+                ],
+                "collectionSite": {
+                    "id": "LAB001",
+                    "name": "Laboratório Central",
+                    "address": "Av. Paulista, 1000"
+                }
+            }
+        },
+        "xml_dicom_worklist": {
+            "description": "XML - DICOM Worklist Entry",
+            "format": "xml",
+            "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<WorklistEntry>\n    <AccessionNumber>ACC2024001234</AccessionNumber>\n    <PatientID>123456</PatientID>\n    <PatientName>SILVA^MARIA^LUIZA</PatientName>\n    <PatientBirthDate>19850315</PatientBirthDate>\n    <PatientSex>F</PatientSex>\n    <StudyInstanceUID>1.2.840.10008.5.1.4.1.1.2.1234567890</StudyInstanceUID>\n    <Modality>CT</Modality>\n    <ScheduledProcedureStep>\n        <StationName>CT_SCANNER_01</StationName>\n        <ScheduledStartDate>20240115</ScheduledStartDate>\n        <ScheduledStartTime>143000</ScheduledStartTime>\n        <ProcedureDescription>TC de Tórax com Contraste</ProcedureDescription>\n        <ScheduledProtocol>CHEST_CT_CONTRAST</ScheduledProtocol>\n    </ScheduledProcedureStep>\n    <RequestingPhysician>ALMEIDA^CARLOS^EDUARDO^DR</RequestingPhysician>\n    <ReferringPhysician>OLIVEIRA^ANA^PAULA^DRA</ReferringPhysician>\n</WorklistEntry>"
+        },
+        "csv_patients_batch": {
+            "description": "CSV - Importação em Lote de Pacientes",
+            "format": "csv",
+            "content": "patient_id,name,birth_date,gender,phone,email,address,city,state,postal_code\n100001,Maria Silva,1985-03-15,F,11912345678,maria@email.com,Rua das Flores 123,São Paulo,SP,01234567\n100002,José Santos,1970-05-20,M,11987654321,jose@email.com,Av Brasil 456,São Paulo,SP,01234568\n100003,Ana Oliveira,1990-08-10,F,11955551234,ana@email.com,Rua Augusta 789,São Paulo,SP,01234569\n100004,Carlos Pereira,1965-12-25,M,11944442222,carlos@email.com,Av Paulista 1000,São Paulo,SP,01234570"
+        },
+        "soap_pacs_query": {
+            "description": "SOAP - Consulta PACS (C-FIND)",
+            "format": "soap",
+            "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<soap:Envelope xmlns:soap=\"http://www.w3.org/2003/05/soap-envelope\" xmlns:pacs=\"http://pacs.hospital.com/ws\">\n    <soap:Header>\n        <pacs:Authentication>\n            <pacs:Username>integration_user</pacs:Username>\n            <pacs:Token>eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...</pacs:Token>\n        </pacs:Authentication>\n    </soap:Header>\n    <soap:Body>\n        <pacs:QueryStudies>\n            <pacs:QueryLevel>STUDY</pacs:QueryLevel>\n            <pacs:PatientID>123456</pacs:PatientID>\n            <pacs:StudyDateRange>\n                <pacs:From>20240101</pacs:From>\n                <pacs:To>20240115</pacs:To>\n            </pacs:StudyDateRange>\n            <pacs:Modalities>\n                <pacs:Modality>CT</pacs:Modality>\n                <pacs:Modality>MR</pacs:Modality>\n            </pacs:Modalities>\n            <pacs:IncludeSeriesInfo>true</pacs:IncludeSeriesInfo>\n        </pacs:QueryStudies>\n    </soap:Body>\n</soap:Envelope>"
+        },
+        "rest_api_webhook": {
+            "description": "REST - Webhook de Notificação de Evento",
+            "format": "rest",
+            "content": {
+                "event": "patient.admitted",
+                "timestamp": "2024-01-15T14:30:00Z",
+                "source": {
+                    "system": "HIS",
+                    "version": "3.2.1"
+                },
+                "data": {
+                    "patient": {
+                        "id": "123456",
+                        "mrn": "MRN-123456",
+                        "name": "Maria Luiza Silva"
+                    },
+                    "admission": {
+                        "id": "ADM-2024-001",
+                        "date": "2024-01-15T14:30:00Z",
+                        "ward": "UTI",
+                        "bed": "101-A",
+                        "attendingPhysician": "Dr. Carlos Almeida"
+                    },
+                    "diagnosis": {
+                        "primary": "Pneumonia",
+                        "icd10": "J18.9"
+                    }
+                },
+                "metadata": {
+                    "correlationId": "corr-123456-789",
+                    "retryCount": 0
+                }
+            }
+        }
+    },
+    "source": {
+        "type": "http_listener",
+        "config": {
+            "port": 8082,
+            "path": "/test"
+        }
+    },
+    "processors": [
+        {
+            "id": "proc-detect-format",
+            "name": "Detector de Formato",
+            "type": "lua_script",
+            "config": {
+                "code": "-- Detectar formato da mensagem automaticamente\nlocal content = msg.content\nlocal format = 'unknown'\n\n-- Detectar HL7\nif content:match('^MSH|') then\n    format = 'hl7'\n    log.info('Formato detectado: HL7 v2')\n-- Detectar XML/SOAP\nelseif content:match('^%s*<%?xml') or content:match('^%s*<') then\n    if content:match('soap:Envelope') or content:match('SOAP-ENV:') then\n        format = 'soap'\n        log.info('Formato detectado: SOAP')\n    else\n        format = 'xml'\n        log.info('Formato detectado: XML')\n    end\n-- Detectar JSON\nelseif content:match('^%s*{') or content:match('^%s*%[') then\n    format = 'json'\n    log.info('Formato detectado: JSON')\n-- Detectar CSV (verificar se tem vírgulas e quebras de linha)\nelseif content:match(',') and content:match('\\n') then\n    format = 'csv'\n    log.info('Formato detectado: CSV')\nend\n\n-- Adicionar header com formato detectado\nmsg.headers = msg.headers or {}\nmsg.headers['X-Detected-Format'] = format\n\nreturn msg.content"
+            }
+        },
+        {
+            "id": "proc-router",
+            "name": "Roteador por Formato",
+            "type": "lua_script",
+            "config": {
+                "code": "-- Rotear mensagem para processador específico baseado no formato\nlocal json = require('json')\n\nlocal output = {\n    originalContent = msg.content,\n    detectedFormat = msg.headers and msg.headers['X-Detected-Format'] or 'unknown',\n    receivedAt = os.date('%Y-%m-%dT%H:%M:%SZ'),\n    processingRoute = 'default'\n}\n\n-- Definir rota de processamento\nif output.detectedFormat == 'hl7' then\n    output.processingRoute = '/processors/hl7'\nelse\n    output.processingRoute = '/processors/generic'\nend\n\nlog.info('Mensagem roteada para: ' .. output.processingRoute)\n\nreturn json.encode(output)"
+            }
+        }
+    ],
+    "destinations": [
+        {
+            "id": "dest-test-output",
+            "name": "Saída de Teste",
+            "type": "file_writer",
+            "config": {
+                "path": "./output/test/${timestamp}_test.json"
+            }
+        }
+    ],
+    "testInstructions": {
+        "pt_BR": {
+            "title": "Como Usar o Test Node",
+            "steps": [
+                "1. Adicione um Test Node ao seu fluxo arrastando-o da barra lateral",
+                "2. Clique no Test Node para expandir suas opções",
+                "3. Selecione o modo de envio: 'Internal' para injeção direta ou 'HTTP Request' para chamada real",
+                "4. Escolha o formato do payload (HL7, JSON, XML, CSV, SOAP, REST)",
+                "5. Use os exemplos pré-definidos ou edite o conteúdo conforme necessário",
+                "6. Clique em 'Send Test' para enviar a mensagem de teste",
+                "7. Observe a resposta no painel de resultado abaixo do botão"
+            ],
+            "modes": {
+                "internal": "Injeta a mensagem diretamente no processador conectado, útil para testes unitários de transformações",
+                "http": "Faz uma requisição HTTP real para o endpoint configurado, útil para testes de integração end-to-end"
+            },
+            "tips": [
+                "Use os presets de payload para começar rapidamente com formatos comuns",
+                "Conecte nós de IP/Port/Text ao Test Node para construir URLs dinamicamente",
+                "O indicador de status mostra se o último teste foi bem-sucedido (verde) ou falhou (vermelho)",
+                "O tamanho do payload é mostrado em caracteres para referência"
+            ]
+        }
+    }
+}
