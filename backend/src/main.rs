@@ -15,10 +15,28 @@ mod engine;
 mod storage;
 mod lua_helpers;
 
+/// Get API key from environment - REQUIRED in production
+fn get_api_key() -> String {
+    match std::env::var("API_KEY") {
+        Ok(key) if key.len() >= 32 => key,
+        Ok(key) if !key.is_empty() => {
+            tracing::warn!("API_KEY is set but less than 32 characters. Consider using a stronger key.");
+            key
+        }
+        _ => {
+            // In development, allow a default key with warning
+            if std::env::var("RUST_ENV").unwrap_or_default() == "production" {
+                panic!("FATAL: API_KEY environment variable MUST be set in production. Generate with: openssl rand -base64 32");
+            }
+            tracing::warn!("⚠️  Using default API key for development. Set API_KEY env var for production!");
+            "dev-key-change-in-production-32chars".to_string()
+        }
+    }
+}
+
 // Auth Middleware
 async fn auth_middleware(req: Request<axum::body::Body>, next: Next) -> Result<Response, StatusCode> {
-    // Default key for dev simplicity, in prod should be forced env var
-    let api_key = std::env::var("API_KEY").unwrap_or_else(|_| "secret-123".to_string());
+    let api_key = get_api_key();
     
     let auth_header = req.headers().get("Authorization")
         .and_then(|h| h.to_str().ok())
@@ -29,7 +47,7 @@ async fn auth_middleware(req: Request<axum::body::Body>, next: Next) -> Result<R
             Ok(next.run(req).await)
         }
         _ => {
-            tracing::warn!("Unauthorized access attempt");
+            tracing::warn!("Unauthorized access attempt from {:?}", req.headers().get("x-forwarded-for"));
             Err(StatusCode::UNAUTHORIZED)
         }
     }
@@ -98,9 +116,20 @@ async fn main() {
         .layer(cors)
         .with_state(channel_manager);
 
-    // Run it with hyper on localhost:3000
-    let addr = SocketAddr::from(([0, 0, 0, 0], 3001));
-    tracing::info!("listening on {}", addr);
+    // Run it with hyper - configurable bind address
+    let bind_addr: std::net::IpAddr = std::env::var("BIND_ADDRESS")
+        .unwrap_or_else(|_| "127.0.0.1".to_string())
+        .parse()
+        .expect("Invalid BIND_ADDRESS format");
+    
+    let port: u16 = std::env::var("PORT")
+        .unwrap_or_else(|_| "3001".to_string())
+        .parse()
+        .expect("Invalid PORT format");
+    
+    let addr = SocketAddr::from((bind_addr, port));
+    tracing::info!("🚀 Server listening on {}", addr);
+    tracing::info!("📝 Set BIND_ADDRESS=0.0.0.0 to listen on all interfaces");
     
     let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();

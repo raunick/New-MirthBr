@@ -305,14 +305,36 @@ export const useFlowStore = create<FlowState>((set, get) => ({
 
     saveFlow: () => {
         const { nodes, edges, channelName, channelId } = get();
+
+        // Sanitize nodes to remove sensitive data before saving
+        const sanitizedNodes = nodes.map(node => ({
+            ...node,
+            data: {
+                ...node.data,
+                // Remove potentially sensitive fields
+                password: undefined,
+                apiKey: undefined,
+                token: undefined,
+                secret: undefined,
+                connectionString: undefined,
+                credentials: undefined,
+            }
+        }));
+
         const flowData = {
-            nodes,
+            nodes: sanitizedNodes,
             edges,
             channelName,
             channelId,
             savedAt: new Date().toISOString(),
         };
-        localStorage.setItem('mirth-flow', JSON.stringify(flowData));
+
+        try {
+            localStorage.setItem('mirth-flow', JSON.stringify(flowData));
+        } catch (e) {
+            console.error('Failed to save flow to localStorage');
+            // Could be quota exceeded or storage disabled
+        }
     },
 
     loadFlow: () => {

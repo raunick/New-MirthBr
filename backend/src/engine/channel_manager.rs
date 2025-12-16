@@ -77,12 +77,14 @@ impl ChannelManager {
                     path = format!("/{}", path);
                 }
                 
-                let listener = HttpListener {
+                let listener = HttpListener::new(
                     port,
-                    path: path.clone(),
+                    path.clone(),
                     channel_id,
-                    sender: tx,
-                };
+                    tx,
+                );
+                // TODO: In future, allow configuring CORS origins per channel
+                // listener.allowed_origins = Some(vec!["http://localhost:3000".to_string()]);
                 listener.start().await;
                 
                 // Log startup
@@ -150,19 +152,27 @@ impl ChannelManager {
                             // Simple HL7 to JSON conversion for MVP
                             // Ignoring input/output format specifics and assuming HL7v2 -> JSON
                             
+                            // Security: Limit parsing to prevent DoS
+                            const MAX_HL7_SEGMENTS: usize = 1000;
+                            const MAX_HL7_FIELDS: usize = 100;
+                            
                             let content = msg.content.clone();
                             let mut map: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
                             
                             // Handle both \r and \n just in case, though HL7 standard is \r
                             let lines: Vec<&str> = if content.contains('\r') {
-                                content.split('\r').collect()
+                                content.split('\r').take(MAX_HL7_SEGMENTS).collect()
                             } else {
-                                content.split('\n').collect()
+                                content.split('\n').take(MAX_HL7_SEGMENTS).collect()
                             };
+
+                            if lines.len() >= MAX_HL7_SEGMENTS {
+                                tracing::warn!("HL7 message truncated at {} segments", MAX_HL7_SEGMENTS);
+                            }
 
                             for segment in lines {
                                 if segment.trim().is_empty() { continue; }
-                                let fields: Vec<&str> = segment.split('|').collect();
+                                let fields: Vec<&str> = segment.split('|').take(MAX_HL7_FIELDS).collect();
                                 if fields.is_empty() { continue; }
                                 
                                 let segment_name = fields[0].to_string();

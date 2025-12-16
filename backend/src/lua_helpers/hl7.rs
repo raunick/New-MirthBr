@@ -1,4 +1,4 @@
-use mlua::{Lua, Result, Table, Value};
+use mlua::{Lua, Result, Table};
 
 pub fn register_hl7(lua: &Lua) -> Result<()> {
     let hl7_table = lua.create_table()?;
