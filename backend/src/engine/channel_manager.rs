@@ -5,6 +5,7 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 use crate::storage::models::{Channel, SourceConfig, ProcessorType};
 use crate::engine::listeners::http::HttpListener;
+use crate::engine::listeners::tcp::TcpListener;
 use crate::engine::processors::lua::LuaProcessor;
 use crate::engine::destinations::http::HttpSender;
 use crate::engine::destinations::file::FileWriter;
@@ -107,6 +108,15 @@ impl ChannelManager {
             SourceConfig::Test { payload_type, .. } => {
                 // No listener to start, just waiting for manual injection
                 self.add_log("INFO", format!("Test Channel {} ready for manual injection (Format: {})", channel.name, payload_type), Some(channel_id));
+            },
+            SourceConfig::Tcp { port } => {
+                let listener = TcpListener::new(
+                    port,
+                    channel_id,
+                    tx,
+                );
+                listener.start().await;
+                self.add_log("INFO", format!("Channel {} started on TCP port {}", channel.name, port), Some(channel_id));
             },
             _ => tracing::warn!("Unsupported source type"),
         }

@@ -147,6 +147,7 @@ async fn main() {
         .route("/channels", post(api::handlers::channels::create_channel))
         .route("/channels", get(api::handlers::channels::list_channels))
         .route("/channels/:id/test", post(api::handlers::test::test_channel))
+        .route("/test/tcp", post(api::handlers::test::test_tcp_dispatch))
         .route("/logs", get(api::handlers::logs::get_logs))
         .layer(middleware::from_fn(auth_middleware));
 

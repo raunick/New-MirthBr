@@ -21,7 +21,10 @@ import { useFlowStore } from '@/stores/useFlowStore';
 
 const TestNode = ({ data, id }: { data: any, id: string }) => {
     const [expanded, setExpanded] = useState(false);
-    const [sendMode, setSendMode] = useState<'inject' | 'http'>('inject');
+    const [sendMode, setSendMode] = useState<'inject' | 'http' | 'tcp'>('inject');
+    const [tcpHost, setTcpHost] = useState('localhost');
+    const [tcpPort, setTcpPort] = useState('6500');
+    const [tcpTimeout, setTcpTimeout] = useState('30');
     const [httpMethod, setHttpMethod] = useState('POST');
     const [httpUrl, setHttpUrl] = useState('http://localhost:8080/api/messages');
 
@@ -102,6 +105,22 @@ const TestNode = ({ data, id }: { data: any, id: string }) => {
                     setStatus('error');
                     setResponse("No test handler connected");
                 }
+            } else if (sendMode === 'tcp') {
+                // HL7 TCP Sender Mode
+                const res = await axios.post('/api/test/tcp', {
+                    host: tcpHost,
+                    port: parseInt(tcpPort),
+                    payload: payload,
+                    timeout_seconds: parseInt(tcpTimeout)
+                });
+
+                if (res.data.success) {
+                    setStatus('success');
+                    setResponse(`ACK Received:\n${res.data.response}\n\n(Raw: ${JSON.stringify(res.data.raw_response)})`);
+                } else {
+                    setStatus('error');
+                    setResponse(`Error: ${res.data.error}\nMessage: ${res.data.message || ''}`);
+                }
             } else {
                 // Real HTTP Request Mode
                 const res = await axios({
@@ -164,9 +183,45 @@ const TestNode = ({ data, id }: { data: any, id: string }) => {
                                 onClick={() => setSendMode('http')}
                                 className={`flex-1 text-[10px] py-1 rounded transition-colors ${sendMode === 'http' ? 'bg-[var(--primary)]/20 text-[var(--primary)] font-bold' : 'text-[var(--foreground-muted)]'}`}
                             >
-                                HTTP Request
+                                Internet
+                            </button>
+                            <button
+                                onClick={() => setSendMode('tcp')}
+                                className={`flex-1 text-[10px] py-1 rounded transition-colors ${sendMode === 'tcp' ? 'bg-[var(--primary)]/20 text-[var(--primary)] font-bold' : 'text-[var(--foreground-muted)]'}`}
+                            >
+                                HL7 TCP
                             </button>
                         </div>
+
+                        {/* TCP Config */}
+                        {sendMode === 'tcp' && (
+                            <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={tcpHost}
+                                        onChange={(e) => setTcpHost(e.target.value)}
+                                        className="flex-1 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                                        placeholder="Host (e.g. localhost)"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={tcpPort}
+                                        onChange={(e) => setTcpPort(e.target.value)}
+                                        className="w-16 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                                        placeholder="Port"
+                                    />
+                                    <input
+                                        type="text"
+                                        value={tcpTimeout}
+                                        onChange={(e) => setTcpTimeout(e.target.value)}
+                                        className="w-10 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
+                                        placeholder="30s"
+                                        title="Timeout (s)"
+                                    />
+                                </div>
+                            </div>
+                        )}
 
                         {/* HTTP Config (Only if HTTP mode) */}
                         {sendMode === 'http' && (
