@@ -2,7 +2,7 @@ import React, { memo, useState, useCallback, useEffect } from 'react';
 import { Handle, Position } from 'reactflow';
 import { PlayCircle, ChevronDown, ChevronRight, Save, Send, AlertCircle, CheckCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { testTcp } from '@/lib/api';
 import axios from 'axios';
 
 const PAYLOAD_PRESETS: Record<string, string> = {
@@ -110,19 +110,19 @@ const TestNode = ({ data, id }: { data: any, id: string }) => {
                 }
             } else if (sendMode === 'tcp') {
                 // HL7 TCP Sender Mode
-                const res = await axios.post('/api/test/tcp', {
-                    host: tcpHost,
-                    port: parseInt(tcpPort),
-                    payload: payload,
-                    timeout_seconds: parseInt(tcpTimeout)
-                });
+                const res = await testTcp(
+                    tcpHost,
+                    parseInt(tcpPort),
+                    payload,
+                    parseInt(tcpTimeout)
+                );
 
-                if (res.data.success) {
+                if (res.success) {
                     setStatus('success');
-                    setResponse(`ACK Received:\n${res.data.response}\n\n(Raw: ${JSON.stringify(res.data.raw_response)})`);
+                    setResponse(`ACK Received:\n${res.response}\n\n(Raw: ${JSON.stringify(res.raw_response)})`);
                 } else {
                     setStatus('error');
-                    setResponse(`Error: ${res.data.error}\nMessage: ${res.data.message || ''}`);
+                    setResponse(`Error: ${res.error}\nMessage: ${res.message || ''}`);
                 }
             } else {
                 // Real HTTP Request Mode

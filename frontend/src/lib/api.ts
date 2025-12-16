@@ -284,6 +284,29 @@ export const formatErrorMessage = (error: unknown): string => {
     return 'Erro desconhecido. Tente novamente.';
 };
 
+
+export const testTcp = async (host: string, port: number, payload: string, timeoutSeconds: number = 30) => {
+    try {
+        const response = await api.post('/test/tcp', {
+            host,
+            port,
+            payload,
+            timeout_seconds: timeoutSeconds
+        });
+        return response.data;
+    } catch (error) {
+        if (error instanceof ApiError) {
+            throw error;
+        }
+        throw new ApiError(
+            'Failed to send TCP message',
+            'TCP_TEST_ERROR',
+            500,
+            'Erro ao enviar mensagem TCP.'
+        );
+    }
+};
+
 export default api;
 
 

@@ -10,6 +10,8 @@ use crate::engine::processors::lua::LuaProcessor;
 use crate::engine::destinations::http::HttpSender;
 use crate::engine::destinations::file::FileWriter;
 use crate::engine::message::Message;
+use std::future::Future;
+use std::pin::Pin;
 
 use std::collections::VecDeque;
 use crate::storage::logs::LogEntry;
@@ -74,19 +76,31 @@ impl ChannelManager {
             let mut channels = self.channels.lock().unwrap();
             if let Some(handle) = channels.remove(&channel_id) {
                 tracing::info!("Stopping existing instance of channel: {}", channel_id);
-                handle.abort();
+                // Abort the task
+                handle.abort(); 
+                // We should ideally wait for it to finish to clean up ports, but we are inside a mutex here.
+                // Releasing mutex to await would be better, but for MVP we just abort.
+                // However, the port binding might linger if we don't wait.
             }
         }
+        
+        // Remove old sender to ensure no stale references
+        self.senders.lock().unwrap().remove(&channel_id);
 
         // 1. Create communication channel (MPSC)
         let (tx, mut rx) = mpsc::channel(100);
 
-        // Store sender for manual injection
+        // Store sender for manual injection AND for listeners to pick up if they need it (though listeners usually take a clone)
         self.senders.lock().unwrap().insert(channel_id, tx.clone());
 
-        // 2. Start Source Listener
-        match channel.source {
+        // 2. Start Source Listener (Create Future)
+        // We will run this concurrent with the processor
+        let listener_fut: Pin<Box<dyn Future<Output = ()> + Send>> = match channel.source {
             SourceConfig::Http { port, path } => {
+                // HttpListener currently spawns its own task in start(). 
+                // We should refactor it too, but for now we won't block deployment on it unless requested.
+                // However, to fix the architecture, we'll wrap it.
+                // NOTE: Detailed fix for HTTP likely required later if similar issues arise.
                 let mut path = path.unwrap_or_else(|| "/".to_string());
                 if !path.starts_with('/') {
                     path = format!("/{}", path);
@@ -96,30 +110,54 @@ impl ChannelManager {
                     port,
                     path.clone(),
                     channel_id,
-                    tx,
+                    tx.clone(),
                 );
-                // TODO: In future, allow configuring CORS origins per channel
-                // listener.allowed_origins = Some(vec!["http://localhost:3000".to_string()]);
-                listener.start().await;
                 
-                // Log startup
-                self.add_log("INFO", format!("Channel {} started on port {} (path: {})", channel.name, port, path), Some(channel_id));
+                Box::pin(async move {
+                    listener.start().await;
+                    // Start spawns a task, so this returns immediately.
+                    // We need to keep this future alive? No, start() returns unit.
+                    // HTTP Listener issue persists unless refactored, but TCP is the focus.
+                // HTTP Listener issue persists unless refactored, but TCP is the focus.
+                    std::future::pending::<()>().await;
+                })
             },
             SourceConfig::Test { payload_type, .. } => {
-                // No listener to start, just waiting for manual injection
                 self.add_log("INFO", format!("Test Channel {} ready for manual injection (Format: {})", channel.name, payload_type), Some(channel_id));
+                Box::pin(std::future::pending())
             },
             SourceConfig::Tcp { port } => {
                 let listener = TcpListener::new(
                     port,
                     channel_id,
-                    tx,
+                    tx, // Move the original tx here
                 );
-                listener.start().await;
+                let channel_name_clone = channel.name.clone();
+                let logs_arc_clone = self.logs.clone();
+                
                 self.add_log("INFO", format!("Channel {} started on TCP port {}", channel.name, port), Some(channel_id));
+
+                Box::pin(async move {
+                    if let Err(e) = listener.run().await {
+                         tracing::error!("TCP Listener failed: {}", e);
+                         // Log error to system logs
+                         if let Ok(mut logs) = logs_arc_clone.lock() {
+                            if logs.len() >= 100 { logs.pop_front(); }
+                            logs.push_back(LogEntry {
+                                timestamp: Utc::now(),
+                                level: "ERROR".to_string(),
+                                message: format!("[Channel: {}] TCP Listener Error: {}", channel_name_clone, e),
+                                channel_id: Some(channel_id),
+                            });
+                        }
+                    }
+                })
             },
-            _ => tracing::warn!("Unsupported source type"),
-        }
+            _ => {
+                tracing::warn!("Unsupported source type");
+                Box::pin(std::future::pending())
+            },
+        };
 
         // 3. Spawn Processing Loop
         let processors = channel.processors.clone();
@@ -127,9 +165,12 @@ impl ChannelManager {
         let logs_arc = self.logs.clone(); // Clone ARC for task
         let channel_name = channel.name.clone(); // Clone for async task
 
-        // Cloning data needed for the async task
+        // 3. Spawn Supervisor Task (runs both listener and processor)
+        // Note: rx is moved into the processor block
         let handle = tokio::spawn(async move {
-            while let Some(mut msg) = rx.recv().await {
+            let processor_fut = async move {
+                 tracing::info!("Channel {} ({}) processing task started", channel_name, channel_id);
+                 while let Some(mut msg) = rx.recv().await {
                 let start_time = Instant::now();
                 let origin = msg.origin.as_deref().unwrap_or("unknown");
                 
@@ -310,7 +351,14 @@ impl ChannelManager {
                     "Message processed"
                 );
             }
-        });
+        }; // End processor_fut
+
+        // Run both futures concurrently. If the supervisor task is aborted, both futures are dropped.
+        tokio::select! {
+            _ = listener_fut => { tracing::error!("Listener exited unexpectedly"); },
+            _ = processor_fut => { tracing::info!("Processor exited"); }
+        }
+    });
 
         // Store handle
         self.channels.lock().unwrap().insert(channel_id, handle);

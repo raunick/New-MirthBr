@@ -1,0 +1,100 @@
+{
+    "version": "1.0",
+    "name": "Variable TCP Workflow",
+    "channelName": "Variable TCP Workflow",
+    "channelId": "e390f2ff-7d65-5c12-01f7-e812859a1962",
+    "nodes": [
+        {
+            "id": "config-port",
+            "type": "portNode",
+            "position": {
+                "x": 100,
+                "y": 100
+            },
+            "data": {
+                "label": "Config: Port",
+                "port": 7700,
+                "protocol": "TCP"
+            }
+        },
+        {
+            "id": "source-1",
+            "type": "tcpListener",
+            "position": {
+                "x": 100,
+                "y": 300
+            },
+            "data": {
+                "label": "Dynamic TCP Listener",
+                "port": 7700
+            }
+        },
+        {
+            "id": "proc-1",
+            "type": "hl7Parser",
+            "position": {
+                "x": 400,
+                "y": 300
+            },
+            "data": {
+                "label": "HL7 to JSON",
+                "inputFormat": "hl7v2",
+                "outputFormat": "json"
+            }
+        },
+        {
+            "id": "dest-1",
+            "type": "fileWriter",
+            "position": {
+                "x": 700,
+                "y": 300
+            },
+            "data": {
+                "label": "Save to File",
+                "path": "parametric_output.json"
+            }
+        },
+        {
+            "id": "test-node-1",
+            "type": "testNode",
+            "position": {
+                "x": 100,
+                "y": 500
+            },
+            "data": {
+                "label": "TCP Sender Test",
+                "payloadType": "hl7",
+                "payload": "MSH|^~\\&|VAR_Sender|VAR_Facility|VAR_Dest|VAR_Dest_Fac|202301010000||ADT^A01|MSG001|P|2.3\rPID|||999999^^^MRN||DOE^JANE",
+                "sendMode": "tcp",
+                "tcpHost": "localhost",
+                "tcpPort": "7700",
+                "tcpTimeout": "30"
+            }
+        }
+    ],
+    "edges": [
+        {
+            "id": "cfg-1",
+            "source": "config-port",
+            "target": "source-1",
+            "targetHandle": "config-port",
+            "animated": true,
+            "style": {
+                "stroke": "#fbbf24",
+                "strokeDasharray": "5 5"
+            }
+        },
+        {
+            "id": "e1-2",
+            "source": "source-1",
+            "target": "proc-1",
+            "animated": true
+        },
+        {
+            "id": "e2-3",
+            "source": "proc-1",
+            "target": "dest-1",
+            "animated": true
+        }
+    ]
+}

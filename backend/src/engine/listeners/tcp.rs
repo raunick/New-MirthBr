@@ -20,7 +20,7 @@ impl TcpListener {
         }
     }
 
-    pub async fn start(&self) {
+    pub async fn run(&self) -> anyhow::Result<()> {
         let port = self.port;
         let channel_id = self.channel_id;
         let sender = self.sender.clone();
@@ -34,39 +34,40 @@ impl TcpListener {
         let addr = SocketAddr::from((bind_addr, port));
         tracing::info!("📡 Channel {} listening on TCP {}:{}", channel_id, bind_addr, port);
 
-        let listener = match TokioTcpListener::bind(addr).await {
-            Ok(l) => l,
-            Err(e) => {
-                tracing::error!("❌ Failed to bind port {} for channel {}: {}", port, channel_id, e);
-                return;
-            }
-        };
+        let listener = TokioTcpListener::bind(addr).await.map_err(|e| {
+            tracing::error!("❌ Failed to bind port {} for channel {}: {}", port, channel_id, e);
+            e
+        })?;
 
-        tokio::spawn(async move {
-            loop {
-                match listener.accept().await {
-                    Ok((socket, addr)) => {
-                        let sender_clone = sender.clone();
-                        tokio::spawn(async move {
-                            handle_connection(socket, addr, channel_id, sender_clone).await;
-                        });
-                    }
-                    Err(e) => {
-                        tracing::error!("Failed to accept TCP connection: {}", e);
-                    }
+        loop {
+            // Use a timeout or select to allow distinct cancellation points if needed
+            match listener.accept().await {
+                Ok((socket, addr)) => {
+                    let sender_clone = sender.clone();
+                    tokio::spawn(async move {
+                        handle_connection(socket, addr, channel_id, sender_clone).await;
+                    });
+                }
+                Err(e) => {
+                    tracing::error!("Failed to accept TCP connection: {}", e);
                 }
             }
-        });
+        }
     }
 }
 
 async fn handle_connection(mut socket: TcpStream, addr: SocketAddr, channel_id: Uuid, sender: mpsc::Sender<Message>) {
+    tracing::info!("Accepted TCP connection from {}", addr);
     let mut buffer = [0u8; 4096]; // Buffer size
 
     loop {
         match socket.read(&mut buffer).await {
-            Ok(0) => break, // Connection closed
+            Ok(0) => {
+                tracing::info!("TCP connection closed by client {}", addr);
+                break;
+            } // Connection closed
             Ok(n) => {
+                tracing::info!("Received {} bytes from {}", n, addr);
                 let data = &buffer[0..n];
                 // Check if MLLP
                 // MLLP: <SB> Content <EB><CR>
