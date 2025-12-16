@@ -13,7 +13,7 @@ interface SettingsModalProps {
 
 interface BackendInfo {
     isConnected: boolean;
-    channels: { id: string; name: string }[];
+    channels: { id: string; name: string; frontend_schema?: any }[];
     version: string;
     uptime?: string;
 }
@@ -25,13 +25,22 @@ interface SystemStats {
 }
 
 export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
-    const { nodes, edges } = useFlowStore();
+    const { nodes, edges, loadFlow } = useFlowStore();
     const [backendInfo, setBackendInfo] = useState<BackendInfo>({
         isConnected: false,
         channels: [],
         version: '0.1.0',
     });
     const [loading, setLoading] = useState(true);
+
+    const handleLoadChannel = (channel: any) => {
+        if (channel.frontend_schema) {
+            loadFlow(channel.frontend_schema);
+            onClose();
+        } else {
+            alert('Este canal não possui um layout visual salvo.');
+        }
+    };
 
     // Calculate system stats
     const systemStats: SystemStats = React.useMemo(() => {
@@ -54,11 +63,19 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         const fetchBackendInfo = async () => {
             setLoading(true);
             try {
+                // Auth header
+                const headers = {
+                    'Authorization': 'Bearer dev-key-change-in-production-32chars'
+                };
+
                 // Check health
                 await axios.get('http://localhost:3001/api/health', { timeout: 2000 });
 
                 // Get channels
-                const channelsRes = await axios.get('http://localhost:3001/api/channels', { timeout: 2000 });
+                const channelsRes = await axios.get('http://localhost:3001/api/channels', {
+                    headers,
+                    timeout: 2000
+                });
 
                 setBackendInfo({
                     isConnected: true,
@@ -230,12 +247,13 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                             {backendInfo.channels.map((channel: any) => (
                                                 <div
                                                     key={channel.id}
-                                                    className="flex items-center gap-2 p-2 rounded-lg bg-[var(--background)]/30"
+                                                    onClick={() => handleLoadChannel(channel)}
+                                                    className="flex items-center gap-2 p-2 rounded-lg bg-[var(--background)]/30 cursor-pointer hover:bg-[var(--glass-bg)] transition-colors"
                                                 >
                                                     <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
                                                     <span className="text-sm text-[var(--foreground)]">{channel.name}</span>
                                                     <span className="text-xs text-[var(--foreground-muted)] ml-auto">
-                                                        ID: {channel.id?.slice(0, 8)}...
+                                                        {channel.frontend_schema ? 'Loadable' : 'Backend Only'}
                                                     </span>
                                                 </div>
                                             ))}

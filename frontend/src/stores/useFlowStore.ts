@@ -34,7 +34,7 @@ interface FlowState {
     duplicateNode: (id: string) => void;
     deleteEdge: (id: string) => void;
     saveFlow: () => void;
-    loadFlow: () => void;
+    loadFlow: (data?: any) => void;
     exportFlow: () => void;
     importFlow: (data: { nodes: Node<NodeData>[]; edges: Edge[]; channelName?: string }) => void;
 
@@ -337,7 +337,16 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         }
     },
 
-    loadFlow: () => {
+    loadFlow: (data?: any) => {
+        if (data) {
+            set({
+                nodes: data.nodes || [],
+                edges: data.edges || [],
+                channelName: data.channelName || 'Loaded Channel',
+                channelId: data.channelId || crypto.randomUUID()
+            });
+            return;
+        }
         const saved = localStorage.getItem('mirth-flow');
         if (saved) {
             try {

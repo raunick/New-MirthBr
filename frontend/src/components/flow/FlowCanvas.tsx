@@ -219,12 +219,27 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
     const handleDeploy = async () => {
         setIsDeploying(true);
         const { channelName, channelId } = useFlowStore.getState();
-        const payload = exportToRust(nodes, edges, channelName || "My Channel", channelId);
 
-        console.log("Deploying:", payload);
+        // Backend config
+        const channelConfig = exportToRust(nodes, edges, channelName || "My Channel", channelId);
+
+        // Frontend schema (for visual restoration)
+        const frontendSchema = {
+            nodes,
+            edges,
+            channelName: channelName || "My Channel",
+            channelId
+        };
+
+        console.log("Deploying:", channelConfig);
         try {
-            await deployChannel(payload);
+            await deployChannel({
+                channel: channelConfig,
+                frontend_schema: frontendSchema
+            });
             onDeploySuccess?.();
+            // Also save to local storage for good measure
+            saveFlow();
         } catch (e) {
             onDeployError?.();
             console.error(e);

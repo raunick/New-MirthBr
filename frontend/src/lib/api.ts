@@ -148,9 +148,9 @@ api.interceptors.request.use(
     error => Promise.reject(error)
 );
 
-export const deployChannel = async (channelConfig: unknown) => {
+export const deployChannel = async (payload: { channel: unknown, frontend_schema: unknown }) => {
     try {
-        const response = await api.post('/channels', channelConfig);
+        const response = await api.post('/channels', payload);
         return response.data;
     } catch (error) {
         if (error instanceof ApiError) {

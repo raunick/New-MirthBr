@@ -16,15 +16,18 @@ use chrono::Utc;
 pub struct ChannelManager {
     channels: Arc<Mutex<HashMap<Uuid, tokio::task::JoinHandle<()>>>>,
     senders: Arc<Mutex<HashMap<Uuid, mpsc::Sender<Message>>>>,
+
     logs: Arc<Mutex<VecDeque<LogEntry>>>,
+    db: Option<crate::storage::db::Database>,
 }
 
 impl ChannelManager {
-    pub fn new() -> Self {
+    pub fn new(db: Option<crate::storage::db::Database>) -> Self {
         Self {
             channels: Arc::new(Mutex::new(HashMap::new())),
             senders: Arc::new(Mutex::new(HashMap::new())),
             logs: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
+            db,
         }
     }
 
@@ -50,9 +53,19 @@ impl ChannelManager {
         }
     }
 
-    pub async fn start_channel(&self, channel: Channel) -> anyhow::Result<()> {
+    pub async fn start_channel(&self, channel: Channel, frontend_schema: Option<serde_json::Value>) -> anyhow::Result<()> {
         let channel_id = channel.id;
         tracing::info!("Starting channel: {} ({})", channel.name, channel_id);
+
+        // Persist to DB if available
+        if let Some(db) = &self.db {
+             let config = serde_json::to_value(&channel).unwrap_or(serde_json::Value::Null);
+             if let Err(e) = db.save_channel(&channel_id.to_string(), &channel.name, config, frontend_schema).await {
+                 tracing::error!("Failed to save channel to DB: {}", e);
+             } else {
+                 tracing::info!("Channel {} saved to DB", channel.name);
+             }
+        }
 
         // Stop existing channel if redeploying
         {
@@ -269,6 +282,15 @@ impl ChannelManager {
             Ok(())
         } else {
             Err(anyhow::anyhow!("Channel not found or not running"))
+        }
+    }
+
+    pub async fn get_stored_channels(&self) -> anyhow::Result<Vec<(String, String, serde_json::Value, Option<serde_json::Value>)>> {
+        if let Some(db) = &self.db {
+             let channels = db.get_all_channels().await?;
+             Ok(channels)
+        } else {
+             Ok(vec![])
         }
     }
 }

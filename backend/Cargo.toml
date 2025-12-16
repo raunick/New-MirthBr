@@ -16,6 +16,8 @@ thiserror = "1.0"
 anyhow = "1.0"
 reqwest = { version = "0.11", features = ["json"] }
 chrono = { version = "0.4", features = ["serde"] }
-tower-http = { version = "0.5", features = ["cors", "limit"] }
+tower-http = { version = "0.5", features = ["cors", "limit", "normalize-path"] }
 url = "2.5"
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls"] }
+tower = "0.5.2"
 

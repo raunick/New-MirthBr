@@ -66,7 +66,47 @@ async fn main() {
 
     tracing::info!("Starting MirthBR Backend...");
 
-    let channel_manager = std::sync::Arc::new(engine::channel_manager::ChannelManager::new());
+    tracing::info!("Starting MirthBR Backend...");
+
+    let database_url = std::env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:mirth.db".to_string());
+    let db = match storage::db::Database::new(&database_url).await {
+        Ok(db) => {
+            tracing::info!("Database connected successfully.");
+            Some(db)
+        }
+        Err(e) => {
+            tracing::error!("Failed to connect to database: {}", e);
+            None
+        }
+    };
+    
+    // Load channels from DB if present
+    let mut initial_channels = Vec::new();
+    if let Some(ref db) = db {
+        match db.get_all_channels().await {
+            Ok(channels) => {
+                tracing::info!("Found {} channels in database", channels.len());
+                for (id, name, config, _) in channels {
+                    if let Ok(channel) = serde_json::from_value::<storage::models::Channel>(config) {
+                        initial_channels.push(channel);
+                    } else {
+                        tracing::error!("Failed to deserialize config for channel {}", name);
+                    }
+                }
+            },
+            Err(e) => tracing::error!("Failed to load channels from db: {}", e),
+        }
+    }
+
+    let channel_manager = std::sync::Arc::new(engine::channel_manager::ChannelManager::new(db));
+
+    // Deploy loaded channels
+    for channel in initial_channels {
+        tracing::info!("Deploying stored channel: {}", channel.name);
+        if let Err(e) = channel_manager.start_channel(channel, None).await {
+            tracing::error!("Failed to start stored channel: {}", e);
+        }
+    }
 
     // Auto-deploy "Hello World" Channel
     let hello_channel = storage::models::Channel {
@@ -91,7 +131,8 @@ async fn main() {
     };
 
     tracing::info!("Auto-deploying Hello World Channel on Port 8090...");
-    if let Err(e) = channel_manager.start_channel(hello_channel).await {
+    // Pass None for frontend_schema as this is auto-deployed
+    if let Err(e) = channel_manager.start_channel(hello_channel, None).await {
         tracing::error!("Failed to start Hello World channel: {}", e);
     }
 
