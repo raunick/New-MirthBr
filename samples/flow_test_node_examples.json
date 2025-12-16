@@ -1,0 +1,126 @@
+{
+    "version": "1.0",
+    "name": "Test Node Examples",
+    "channelName": "Test Node Showcase",
+    "channelId": "550e8400-e29b-41d4-a716-446655440103",
+    "exportedAt": "2024-12-16T12:00:00Z",
+    "nodes": [
+        {
+            "id": "comment-main",
+            "type": "commentNode",
+            "position": {
+                "x": 50,
+                "y": 50
+            },
+            "data": {
+                "label": "🧪 Test Node Examples",
+                "text": "Exemplos de Test Node com diferentes formatos:\n\n• HL7 - Mensagens ADT, ORU\n• JSON - Dados estruturados\n• XML - DICOM Worklist\n\nClique em cada Test Node para expandir e ver o payload.",
+                "color": "#dbeafe"
+            }
+        },
+        {
+            "id": "test-hl7-adt",
+            "type": "testNode",
+            "position": {
+                "x": 50,
+                "y": 200
+            },
+            "data": {
+                "label": "HL7 ADT^A01",
+                "payloadType": "hl7",
+                "payload": "MSH|^~\\&|HIS|HOSPITAL|MIRTHBR|ENGINE|202312140800||ADT^A01|MSG00001|P|2.3\nEVN|A01|202312140800\nPID|||123456^^^HOSP^MR||SILVA^MARIA^LUIZA||19850315|F|||RUA DAS FLORES 123^^SAO PAULO^SP^01234567^BR||5511912345678\nPV1||I|UTI^101^A^HOSPITAL||||1234^ALMEIDA^CARLOS^EDUARDO^DR|||MED||||||||1234567890|||||||||||||202312140800"
+            }
+        },
+        {
+            "id": "test-hl7-oru",
+            "type": "testNode",
+            "position": {
+                "x": 50,
+                "y": 350
+            },
+            "data": {
+                "label": "HL7 ORU^R01",
+                "payloadType": "hl7",
+                "payload": "MSH|^~\\&|LIS|LAB|MIRTHBR|ENGINE|202312141000||ORU^R01|LAB00001|P|2.3\nPID|||123456^^^HOSP^MR||SILVA^MARIA^LUIZA||19850315|F\nOBR|1|ORD001|LAB001|CBC^Hemograma^LOCAL|||202312140800\nOBX|1|NM|WBC^Leucócitos^LOCAL||7500|/uL|4500-11000|N|||F\nOBX|2|NM|HGB^Hemoglobina^LOCAL||13.5|g/dL|12.0-16.0|N|||F"
+            }
+        },
+        {
+            "id": "test-json",
+            "type": "testNode",
+            "position": {
+                "x": 50,
+                "y": 500
+            },
+            "data": {
+                "label": "JSON Patient",
+                "payloadType": "json",
+                "payload": "{\n  \"resourceType\": \"Patient\",\n  \"id\": \"123456\",\n  \"active\": true,\n  \"name\": [{\n    \"use\": \"official\",\n    \"family\": \"Silva\",\n    \"given\": [\"Maria\", \"Luiza\"]\n  }],\n  \"gender\": \"female\",\n  \"birthDate\": \"1985-03-15\"\n}"
+            }
+        },
+        {
+            "id": "test-xml",
+            "type": "testNode",
+            "position": {
+                "x": 50,
+                "y": 650
+            },
+            "data": {
+                "label": "XML DICOM",
+                "payloadType": "xml",
+                "payload": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<WorklistEntry>\n    <AccessionNumber>ACC2024001234</AccessionNumber>\n    <PatientID>123456</PatientID>\n    <PatientName>SILVA^MARIA^LUIZA</PatientName>\n    <Modality>CT</Modality>\n    <ScheduledProcedure>TC de Tórax</ScheduledProcedure>\n</WorklistEntry>"
+            }
+        },
+        {
+            "id": "source-http",
+            "type": "httpListener",
+            "position": {
+                "x": 400,
+                "y": 400
+            },
+            "data": {
+                "label": "HTTP Receiver",
+                "port": 8083,
+                "path": "/test"
+            }
+        },
+        {
+            "id": "proc-logger",
+            "type": "luaScript",
+            "position": {
+                "x": 700,
+                "y": 400
+            },
+            "data": {
+                "label": "Logger",
+                "code": "-- Log de entrada\nlog.info('=========================================')\nlog.info('Mensagem recebida')\nlog.info('Tamanho: ' .. #msg.content .. ' bytes')\nlog.info('Conteúdo:')\nlog.info(msg.content)\nlog.info('=========================================')\n\nreturn msg.content"
+            }
+        },
+        {
+            "id": "dest-file",
+            "type": "fileWriter",
+            "position": {
+                "x": 1000,
+                "y": 400
+            },
+            "data": {
+                "label": "Output File",
+                "path": "./output/test",
+                "filename": "${timestamp}_test.txt"
+            }
+        }
+    ],
+    "edges": [
+        {
+            "id": "e1",
+            "source": "source-http",
+            "target": "proc-logger",
+            "animated": true
+        },
+        {
+            "id": "e2",
+            "source": "proc-logger",
+            "target": "dest-file",
+            "animated": true
+        }
+    ]
+}

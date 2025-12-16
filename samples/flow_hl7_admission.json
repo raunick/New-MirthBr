@@ -1,0 +1,124 @@
+{
+    "version": "1.0",
+    "name": "HL7 Admission Complete Flow",
+    "channelName": "HL7 Admission Complete",
+    "channelId": "550e8400-e29b-41d4-a716-446655440101",
+    "exportedAt": "2024-12-16T12:00:00Z",
+    "nodes": [
+        {
+            "id": "comment-info",
+            "type": "commentNode",
+            "position": {
+                "x": 50,
+                "y": 50
+            },
+            "data": {
+                "label": "HL7 Admission Pipeline",
+                "text": "Fluxo completo de processamento de admissão hospitalar:\n\n1. Recebe mensagens HL7 via HTTP\n2. Faz parse para JSON\n3. Valida campos obrigatórios\n4. Enriquece com metadados\n5. Salva em arquivo JSON\n\nUse o Test Node para enviar mensagens HL7 ADT^A01",
+                "color": "#dbeafe"
+            }
+        },
+        {
+            "id": "test-node",
+            "type": "testNode",
+            "position": {
+                "x": 50,
+                "y": 250
+            },
+            "data": {
+                "label": "Test HL7 Message",
+                "payloadType": "hl7",
+                "payload": "MSH|^~\\&|HIS|HOSPITAL|MIRTHBR|ENGINE|202312140800||ADT^A01|MSG00001|P|2.3\nEVN|A01|202312140800\nPID|||123456^^^HOSP^MR||SILVA^MARIA^LUIZA||19850315|F|||RUA DAS FLORES 123^^SAO PAULO^SP^01234567^BR||5511912345678\nPV1||I|UTI^101^A^HOSPITAL||||1234^ALMEIDA^CARLOS^EDUARDO^DR|||MED||||||||1234567890|||||||||||||202312140800"
+            }
+        },
+        {
+            "id": "source-http",
+            "type": "httpListener",
+            "position": {
+                "x": 350,
+                "y": 250
+            },
+            "data": {
+                "label": "HTTP HL7 Receiver",
+                "port": 8081,
+                "path": "/hl7/admission"
+            }
+        },
+        {
+            "id": "proc-hl7-parser",
+            "type": "hl7Parser",
+            "position": {
+                "x": 650,
+                "y": 250
+            },
+            "data": {
+                "label": "HL7 to JSON",
+                "inputFormat": "hl7v2",
+                "outputFormat": "json"
+            }
+        },
+        {
+            "id": "proc-validator",
+            "type": "luaScript",
+            "position": {
+                "x": 950,
+                "y": 250
+            },
+            "data": {
+                "label": "Validador de Dados",
+                "code": "-- Validação de campos obrigatórios\nlocal json = require('json')\nlocal data = json.decode(msg.content)\n\nlocal errors = {}\n\n-- Validar PID (Patient Identification)\nif not data.PID then\n    table.insert(errors, 'Segmento PID ausente')\nelse\n    if not data.PID[3] or data.PID[3] == '' then\n        table.insert(errors, 'ID do paciente (PID-3) é obrigatório')\n    end\n    if not data.PID[5] or data.PID[5] == '' then\n        table.insert(errors, 'Nome do paciente (PID-5) é obrigatório')\n    end\nend\n\nif #errors > 0 then\n    log.error('Validação falhou: ' .. table.concat(errors, '; '))\n    data['_validationErrors'] = errors\n    data['_isValid'] = false\nelse\n    log.info('Validação OK')\n    data['_isValid'] = true\nend\n\nreturn json.encode(data)"
+            }
+        },
+        {
+            "id": "proc-enrich",
+            "type": "luaScript",
+            "position": {
+                "x": 1250,
+                "y": 250
+            },
+            "data": {
+                "label": "Enriquecimento",
+                "code": "-- Enriquecer dados com metadados do sistema\nlocal json = require('json')\nlocal data = json.decode(msg.content)\n\n-- Adicionar metadados de processamento\ndata['_metadata'] = {\n    processedAt = os.date('%Y-%m-%dT%H:%M:%SZ'),\n    processedBy = 'MirthBR Engine',\n    version = '1.0.0',\n    channelId = 'hl7-admission-complete'\n}\n\nlog.info('Dados enriquecidos com metadados')\n\nreturn json.encode(data)"
+            }
+        },
+        {
+            "id": "dest-file",
+            "type": "fileWriter",
+            "position": {
+                "x": 1550,
+                "y": 250
+            },
+            "data": {
+                "label": "Arquivo de Saída",
+                "path": "./output/admissions",
+                "filename": "${timestamp}_admission.json"
+            }
+        }
+    ],
+    "edges": [
+        {
+            "id": "e1",
+            "source": "source-http",
+            "target": "proc-hl7-parser",
+            "animated": true
+        },
+        {
+            "id": "e2",
+            "source": "proc-hl7-parser",
+            "target": "proc-validator",
+            "animated": true
+        },
+        {
+            "id": "e3",
+            "source": "proc-validator",
+            "target": "proc-enrich",
+            "animated": true
+        },
+        {
+            "id": "e4",
+            "source": "proc-enrich",
+            "target": "dest-file",
+            "animated": true
+        }
+    ]
+}

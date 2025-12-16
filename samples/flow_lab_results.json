@@ -1,0 +1,137 @@
+{
+    "version": "1.0",
+    "name": "Lab Results Pipeline Flow",
+    "channelName": "Lab Results Pipeline",
+    "channelId": "550e8400-e29b-41d4-a716-446655440102",
+    "exportedAt": "2024-12-16T12:00:00Z",
+    "nodes": [
+        {
+            "id": "comment-info",
+            "type": "commentNode",
+            "position": {
+                "x": 50,
+                "y": 50
+            },
+            "data": {
+                "label": "Lab Results Pipeline",
+                "text": "Pipeline de processamento de resultados laboratoriais:\n\n1. Recebe ORU^R01 via HTTP\n2. Converte HL7 para JSON\n3. Detecta valores críticos (K+, Glicose, etc)\n4. Formata dados de saída\n5. Salva no arquivo\n\nTeste com HL7 ORU normal ou crítico",
+                "color": "#fef3c7"
+            }
+        },
+        {
+            "id": "test-normal",
+            "type": "testNode",
+            "position": {
+                "x": 50,
+                "y": 250
+            },
+            "data": {
+                "label": "ORU Normal",
+                "payloadType": "hl7",
+                "payload": "MSH|^~\\&|LIS|LAB|MIRTHBR|ENGINE|202312141000||ORU^R01|LAB00001|P|2.3\nPID|||123456^^^HOSP^MR||SILVA^MARIA^LUIZA||19850315|F\nOBR|1|ORD001|LAB001|CBC^Hemograma Completo^LOCAL|||202312140800\nOBX|1|NM|WBC^Leucócitos^LOCAL||7500|/uL|4500-11000|N|||F\nOBX|2|NM|HGB^Hemoglobina^LOCAL||13.5|g/dL|12.0-16.0|N|||F\nOBX|3|NM|K^Potássio^LOCAL||4.2|mEq/L|3.5-5.0|N|||F"
+            }
+        },
+        {
+            "id": "test-critical",
+            "type": "testNode",
+            "position": {
+                "x": 50,
+                "y": 500
+            },
+            "data": {
+                "label": "ORU CRÍTICO",
+                "payloadType": "hl7",
+                "payload": "MSH|^~\\&|LIS|LAB|MIRTHBR|ENGINE|202312141100||ORU^R01|LAB00002|P|2.3\nPID|||789012^^^HOSP^MR||SANTOS^JOSE^CARLOS||19700520|M\nOBR|1|ORD002|LAB002|CHEM^Bioquímica^LOCAL|||202312141030\nOBX|1|NM|K^Potássio^LOCAL||7.2|mEq/L|3.5-5.0|HH|||F\nOBX|2|NM|GLUC^Glicose^LOCAL||45|mg/dL|70-100|LL|||F"
+            }
+        },
+        {
+            "id": "source-http",
+            "type": "httpListener",
+            "position": {
+                "x": 350,
+                "y": 350
+            },
+            "data": {
+                "label": "Lab HTTP Receiver",
+                "port": 8082,
+                "path": "/lab/results"
+            }
+        },
+        {
+            "id": "proc-hl7",
+            "type": "hl7Parser",
+            "position": {
+                "x": 600,
+                "y": 350
+            },
+            "data": {
+                "label": "HL7 to JSON",
+                "inputFormat": "hl7v2",
+                "outputFormat": "json"
+            }
+        },
+        {
+            "id": "proc-critical",
+            "type": "luaScript",
+            "position": {
+                "x": 850,
+                "y": 350
+            },
+            "data": {
+                "label": "Detector de Críticos",
+                "code": "-- Identificar resultados críticos\nlocal json = require('json')\nlocal data = json.decode(msg.content)\n\nlocal criticalResults = {}\nlocal hasCritical = false\n\n-- Verificar OBX para valores críticos\nif data.OBX then\n    local obxList = type(data.OBX[1]) == 'table' and data.OBX or {data.OBX}\n    \n    for i, obx in ipairs(obxList) do\n        local abnormalFlag = obx[8] or ''\n        \n        -- Flags críticas: HH (muito alto), LL (muito baixo)\n        if abnormalFlag == 'HH' or abnormalFlag == 'LL' then\n            table.insert(criticalResults, {\n                test = obx[3] or '',\n                value = obx[5] or '',\n                flag = abnormalFlag\n            })\n            hasCritical = true\n        end\n    end\nend\n\n-- Adicionar metadata de alerta\ndata['_alerts'] = {\n    hasCriticalResults = hasCritical,\n    criticalCount = #criticalResults,\n    criticalDetails = criticalResults,\n    checkedAt = os.date('%Y-%m-%dT%H:%M:%SZ')\n}\n\nif hasCritical then\n    log.warn('*** ALERTA: ' .. #criticalResults .. ' resultado(s) crítico(s)! ***')\nelse\n    log.info('Nenhum resultado crítico')\nend\n\nreturn json.encode(data)"
+            }
+        },
+        {
+            "id": "proc-format",
+            "type": "luaScript",
+            "position": {
+                "x": 1150,
+                "y": 350
+            },
+            "data": {
+                "label": "Formatador de Saída",
+                "code": "-- Formatar para padrão de saída\nlocal json = require('json')\nlocal data = json.decode(msg.content)\n\n-- Criar estrutura padronizada\nlocal output = {\n    messageId = data.MSH and data.MSH[10] or 'unknown',\n    messageType = 'LAB_RESULT',\n    timestamp = os.date('%Y-%m-%dT%H:%M:%SZ'),\n    patient = {},\n    results = {},\n    alerts = data['_alerts'] or {}\n}\n\n-- Dados do paciente\nif data.PID then\n    output.patient = {\n        id = data.PID[3] or '',\n        name = data.PID[5] or ''\n    }\nend\n\n-- Resultados\nif data.OBX then\n    local obxList = type(data.OBX[1]) == 'table' and data.OBX or {data.OBX}\n    for i, obx in ipairs(obxList) do\n        table.insert(output.results, {\n            testCode = obx[3] or '',\n            value = obx[5] or '',\n            units = obx[6] or '',\n            abnormalFlag = obx[8] or 'N'\n        })\n    end\nend\n\nlog.info('Resultado formatado: ' .. #output.results .. ' observações')\n\nreturn json.encode(output)"
+            }
+        },
+        {
+            "id": "dest-file",
+            "type": "fileWriter",
+            "position": {
+                "x": 1450,
+                "y": 350
+            },
+            "data": {
+                "label": "Arquivo Lab Results",
+                "path": "./output/lab",
+                "filename": "${timestamp}_lab.json"
+            }
+        }
+    ],
+    "edges": [
+        {
+            "id": "e1",
+            "source": "source-http",
+            "target": "proc-hl7",
+            "animated": true
+        },
+        {
+            "id": "e2",
+            "source": "proc-hl7",
+            "target": "proc-critical",
+            "animated": true
+        },
+        {
+            "id": "e3",
+            "source": "proc-critical",
+            "target": "proc-format",
+            "animated": true
+        },
+        {
+            "id": "e4",
+            "source": "proc-format",
+            "target": "dest-file",
+            "animated": true
+        }
+    ]
+}

@@ -1,0 +1,198 @@
+{
+    "version": "1.0",
+    "name": "Dynamic Configuration Demo",
+    "channelName": "Dynamic Config Demo",
+    "channelId": "550e8400-e29b-41d4-a716-446655440104",
+    "exportedAt": "2024-12-16T12:00:00Z",
+    "nodes": [
+        {
+            "id": "comment-info",
+            "type": "commentNode",
+            "position": {
+                "x": 50,
+                "y": 50
+            },
+            "data": {
+                "label": "🔧 Configuração Dinâmica",
+                "text": "Este fluxo demonstra como usar nós auxiliares:\n\n• Port Node - Define portas reutilizáveis\n• Text Node - Textos e templates\n• IP Node - Endereços IP\n\nConecte os nós auxiliares aos handles de config\ndo HTTP Listener e HTTP Sender!",
+                "color": "#e0f2fe"
+            }
+        },
+        {
+            "id": "config-port",
+            "type": "portNode",
+            "position": {
+                "x": 50,
+                "y": 220
+            },
+            "data": {
+                "label": "Porta do Serviço",
+                "port": 9090,
+                "protocol": "TCP"
+            }
+        },
+        {
+            "id": "config-path",
+            "type": "textNode",
+            "position": {
+                "x": 50,
+                "y": 350
+            },
+            "data": {
+                "label": "Caminho Base",
+                "text": "/api/v1",
+                "isTemplate": false
+            }
+        },
+        {
+            "id": "config-ip",
+            "type": "ipNode",
+            "position": {
+                "x": 50,
+                "y": 480
+            },
+            "data": {
+                "label": "IP do Backend",
+                "ip": "127.0.0.1",
+                "subnet": "255.255.255.0"
+            }
+        },
+        {
+            "id": "source-http",
+            "type": "httpListener",
+            "position": {
+                "x": 350,
+                "y": 280
+            },
+            "data": {
+                "label": "API Gateway",
+                "port": 8080,
+                "path": "/"
+            }
+        },
+        {
+            "id": "proc-transform",
+            "type": "luaScript",
+            "position": {
+                "x": 650,
+                "y": 280
+            },
+            "data": {
+                "label": "Transform",
+                "code": "-- Transformação simples\nlog.info('Processando mensagem...')\n\nreturn msg.content:upper()"
+            }
+        },
+        {
+            "id": "template-url",
+            "type": "textNode",
+            "position": {
+                "x": 650,
+                "y": 450
+            },
+            "data": {
+                "label": "URL Template",
+                "text": "http://localhost:${Porta do Serviço}${Caminho Base}/callback",
+                "isTemplate": true
+            }
+        },
+        {
+            "id": "dest-http",
+            "type": "httpSender",
+            "position": {
+                "x": 1000,
+                "y": 280
+            },
+            "data": {
+                "label": "Callback Sender",
+                "url": "http://placeholder",
+                "method": "POST"
+            }
+        },
+        {
+            "id": "dest-file",
+            "type": "fileWriter",
+            "position": {
+                "x": 1000,
+                "y": 450
+            },
+            "data": {
+                "label": "Backup Local",
+                "path": "./output/backup",
+                "filename": "${timestamp}.txt"
+            }
+        }
+    ],
+    "edges": [
+        {
+            "id": "flow-1",
+            "source": "source-http",
+            "target": "proc-transform",
+            "animated": true
+        },
+        {
+            "id": "flow-2",
+            "source": "proc-transform",
+            "target": "dest-http",
+            "animated": true
+        },
+        {
+            "id": "flow-3",
+            "source": "proc-transform",
+            "target": "dest-file",
+            "animated": true
+        },
+        {
+            "id": "cfg-1",
+            "source": "config-port",
+            "target": "source-http",
+            "targetHandle": "config-port",
+            "animated": true,
+            "style": {
+                "stroke": "#fbbf24",
+                "strokeDasharray": "5 5"
+            }
+        },
+        {
+            "id": "cfg-2",
+            "source": "config-path",
+            "target": "source-http",
+            "targetHandle": "config-path",
+            "animated": true,
+            "style": {
+                "stroke": "#fbbf24",
+                "strokeDasharray": "5 5"
+            }
+        },
+        {
+            "id": "tpl-1",
+            "source": "config-port",
+            "target": "template-url",
+            "animated": true,
+            "style": {
+                "stroke": "#fbbf24",
+                "strokeDasharray": "5 5"
+            }
+        },
+        {
+            "id": "tpl-2",
+            "source": "config-path",
+            "target": "template-url",
+            "animated": true,
+            "style": {
+                "stroke": "#fbbf24",
+                "strokeDasharray": "5 5"
+            }
+        },
+        {
+            "id": "cfg-3",
+            "source": "template-url",
+            "target": "dest-http",
+            "targetHandle": "config-url",
+            "animated": true,
+            "style": {
+                "stroke": "#fbbf24",
+                "strokeDasharray": "5 5"
+            }
+        }
+    ]
+}
