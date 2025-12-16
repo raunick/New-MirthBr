@@ -21,10 +21,10 @@ import { useFlowStore } from '@/stores/useFlowStore';
 
 const TestNode = ({ data, id }: { data: any, id: string }) => {
     const [expanded, setExpanded] = useState(false);
-    const [sendMode, setSendMode] = useState<'inject' | 'http' | 'tcp'>('inject');
-    const [tcpHost, setTcpHost] = useState('localhost');
-    const [tcpPort, setTcpPort] = useState('6500');
-    const [tcpTimeout, setTcpTimeout] = useState('30');
+    const [sendMode, setSendMode] = useState<'inject' | 'http' | 'tcp'>(data.sendMode || 'inject');
+    const [tcpHost, setTcpHost] = useState(data.tcpHost || 'localhost');
+    const [tcpPort, setTcpPort] = useState(data.tcpPort || '6500');
+    const [tcpTimeout, setTcpTimeout] = useState(data.tcpTimeout || '30');
     const [httpMethod, setHttpMethod] = useState('POST');
     const [httpUrl, setHttpUrl] = useState('http://localhost:8080/api/messages');
 
@@ -77,8 +77,11 @@ const TestNode = ({ data, id }: { data: any, id: string }) => {
     useEffect(() => {
         data.onDataChange?.('payloadType', payloadType);
         data.onDataChange?.('payload', payload);
-        // We could sync sendMode/url too if we want persistence
-    }, [payloadType, payload, data.onDataChange]);
+        data.onDataChange?.('sendMode', sendMode);
+        data.onDataChange?.('tcpHost', tcpHost);
+        data.onDataChange?.('tcpPort', tcpPort);
+        data.onDataChange?.('tcpTimeout', tcpTimeout);
+    }, [payloadType, payload, sendMode, tcpHost, tcpPort, tcpTimeout, data.onDataChange]);
 
     const handleTypeChange = (value: string) => {
         setPayloadType(value);
