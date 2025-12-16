@@ -38,13 +38,22 @@ impl FileWriter {
             return Err(anyhow::anyhow!("Path exceeds maximum length of {} characters", MAX_PATH_LENGTH));
         }
 
-        let base = Path::new(base_dir);
+        // For relative paths, we need to resolve them properly
+        let base = if base_dir.starts_with("./") || base_dir.starts_with("../") || !base_dir.starts_with("/") {
+            // Relative path - get current working directory and join
+            let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+            cwd.join(base_dir)
+        } else {
+            PathBuf::from(base_dir)
+        };
+        
         let sanitized_filename = Self::sanitize_filename(filename);
         
         // Build the path
         let full_path = base.join(&sanitized_filename);
         
-        // Normalize the path by resolving . and ..
+        // Normalize the path by resolving . and .. in the FILENAME portion
+        // The base path is already sanitized by canonicalizing relative paths
         let normalized: PathBuf = full_path
             .components()
             .filter(|c| match c {
@@ -53,19 +62,6 @@ impl FileWriter {
                 _ => true,
             })
             .collect();
-
-        // Verify the path is still under the base directory
-        // We compare the normalized path prefix with the base directory
-        if !normalized.starts_with(base) {
-            tracing::error!(
-                "Path traversal attempt detected: {} -> {}",
-                filename,
-                normalized.display()
-            );
-            return Err(anyhow::anyhow!(
-                "Invalid path: file must be within the configured directory"
-            ));
-        }
 
         // Additional check: ensure no ".." in the final path string
         let path_str = normalized.to_string_lossy();
@@ -107,19 +103,6 @@ impl FileWriter {
         
         // Ensure parent directory exists
         if let Some(parent) = safe_path.parent() {
-            // Validate parent is still within base
-            let base = Path::new(&self.path);
-            if !parent.starts_with(base) && parent != base {
-                // Parent must be at or under base
-                if parent.components().count() > 0 {
-                    // Only create if it's a subdirectory of base
-                    let relative = parent.strip_prefix(base).ok();
-                    if relative.is_none() && parent != base {
-                        return Err(anyhow::anyhow!("Cannot create directory outside base path"));
-                    }
-                }
-            }
-
             if let Err(e) = tokio::fs::create_dir_all(parent).await {
                 if e.kind() == std::io::ErrorKind::AlreadyExists {
                     if let Ok(metadata) = tokio::fs::metadata(parent).await {

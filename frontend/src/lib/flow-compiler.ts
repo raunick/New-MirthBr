@@ -167,8 +167,13 @@ export function exportToRust(nodes: Node[], edges: Edge[], channelName: string =
         destinations: []
     };
 
-    // Find the source node
-    const sourceNode = nodes.find(n => isSourceNode(n.type || ''));
+    // Find the source node - Prioritize real listeners over TestNode
+    // TestNode should only be the source if no other source exists
+    const realSourceNode = nodes.find(n => isSourceNode(n.type || '') && n.type !== 'testNode');
+    const testSourceNode = nodes.find(n => n.type === 'testNode');
+
+    const sourceNode = realSourceNode || testSourceNode;
+
     if (sourceNode) {
         channel.source = buildSourceConfig(sourceNode, nodes, edges);
     }

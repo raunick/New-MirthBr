@@ -34,8 +34,11 @@ impl LuaProcessor {
             ("load(", "Dynamic code loading is not allowed"),
             ("_G[", "Direct global table access is not allowed"),
             ("debug.", "Debug library is not allowed"),
-            ("os.", "OS library is not allowed"),
             ("io.", "IO library is not allowed"),
+            ("os.execute", "OS execution is not allowed"),
+            ("os.remove", "File deletion is not allowed"),
+            ("os.rename", "File renaming is not allowed"),
+            ("os.exit", "Process termination is not allowed"),
         ];
 
         for (pattern, message) in dangerous_patterns {
@@ -53,9 +56,10 @@ impl LuaProcessor {
         self.validate_code()?;
 
         // Create sandboxed Lua with only safe libraries
-        // Excludes: os, io, debug, package, ffi
+        // Excludes: os, io, debug, ffi
+        // Note: Package is enabled to support 'require', but should be restricted if possible
         let lua = Lua::new_with(
-            StdLib::STRING | StdLib::TABLE | StdLib::MATH | StdLib::UTF8 | StdLib::COROUTINE,
+            StdLib::STRING | StdLib::TABLE | StdLib::MATH | StdLib::UTF8 | StdLib::COROUTINE | StdLib::PACKAGE,
             LuaOptions::default()
         ).map_err(|e| anyhow::anyhow!("Lua init error: {}", e))?;
 
@@ -75,6 +79,38 @@ impl LuaProcessor {
         for func_name in functions_to_remove {
             let _ = globals.set(func_name, mlua::Nil);
         }
+
+        // --- Safe OS Library Mock ---
+        // We only allow date/time functions, mocking the 'os' table
+        let os_table = lua.create_table()?;
+        os_table.set("date", lua.create_function(|_, (format, time): (Option<String>, Option<i64>)| {
+            let now = chrono::Utc::now();
+            let ts = if let Some(t) = time {
+                chrono::DateTime::from_timestamp(t, 0).unwrap_or(now)
+            } else {
+                now
+            };
+            
+            let fmt = format.unwrap_or("%c".to_string());
+            // chrono format is similar to strftime but likely sufficient for Lua scripts
+            Ok(ts.format(&fmt).to_string())
+        })?)?;
+        
+        os_table.set("time", lua.create_function(|_, table: Option<mlua::Table>| {
+             // Basic time implementation (current timestamp)
+             // Ignoring table arg for full compatibility for now, just returning current ts
+             Ok(chrono::Utc::now().timestamp())
+        })?)?;
+
+        os_table.set("difftime", lua.create_function(|_, (t2, t1): (i64, i64)| {
+            Ok(t2 - t1)
+        })?)?;
+        
+        os_table.set("clock", lua.create_function(|_, ()| {
+             Ok(0.0) // Mock
+        })?)?;
+        
+        globals.set("os", os_table)?;
 
         // Register safe helpers
         lua_helpers::logging::register_logging(&lua)?;

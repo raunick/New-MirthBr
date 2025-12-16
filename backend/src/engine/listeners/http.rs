@@ -36,47 +36,64 @@ impl HttpListener {
 
     /// Build a secure CORS layer based on allowed origins configuration
     fn build_cors_layer(&self) -> CorsLayer {
-        match &self.allowed_origins {
-            Some(origins) if !origins.is_empty() => {
-                // Parse allowed origins into HeaderValues
-                let parsed_origins: Vec<HeaderValue> = origins
-                    .iter()
-                    .filter_map(|o| o.parse::<HeaderValue>().ok())
-                    .collect();
+        // In development mode, allow all origins for easier testing
+        let is_dev = std::env::var("RUST_ENV").unwrap_or_else(|_| "development".to_string()) != "production";
+        
+        if is_dev {
+            // Development mode: Permissive CORS for local testing
+            tracing::info!(
+                "Channel {}: CORS open for development (all origins allowed)",
+                self.channel_id
+            );
+            CorsLayer::new()
+                .allow_origin(tower_http::cors::Any)
+                .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE, Method::OPTIONS])
+                .allow_headers([CONTENT_TYPE, AUTHORIZATION])
+                .max_age(Duration::from_secs(3600))
+        } else {
+            // Production mode: Strict CORS
+            match &self.allowed_origins {
+                Some(origins) if !origins.is_empty() => {
+                    // Parse allowed origins into HeaderValues
+                    let parsed_origins: Vec<HeaderValue> = origins
+                        .iter()
+                        .filter_map(|o| o.parse::<HeaderValue>().ok())
+                        .collect();
 
-                if parsed_origins.is_empty() {
-                    tracing::warn!(
-                        "Channel {}: No valid CORS origins parsed, defaulting to restrictive policy",
+                    if parsed_origins.is_empty() {
+                        tracing::warn!(
+                            "Channel {}: No valid CORS origins parsed, defaulting to restrictive policy",
+                            self.channel_id
+                        );
+                        CorsLayer::new()
+                            .allow_methods([Method::POST])
+                            .allow_headers([CONTENT_TYPE])
+                            .max_age(Duration::from_secs(3600))
+                    } else {
+                        tracing::info!(
+                            "Channel {}: CORS enabled for {} origins",
+                            self.channel_id,
+                            parsed_origins.len()
+                        );
+                        CorsLayer::new()
+                            .allow_origin(parsed_origins)
+                            .allow_methods([Method::POST, Method::OPTIONS])
+                            .allow_headers([CONTENT_TYPE, AUTHORIZATION])
+                            .max_age(Duration::from_secs(3600))
+                    }
+                }
+                _ => {
+                    // Default: Restrictive CORS (same-origin only effectively)
+                    // No explicit origins = browsers will block cross-origin requests
+                    tracing::info!(
+                        "Channel {}: CORS restricted (no cross-origin allowed)",
                         self.channel_id
                     );
                     CorsLayer::new()
                         .allow_methods([Method::POST])
                         .allow_headers([CONTENT_TYPE])
                         .max_age(Duration::from_secs(3600))
-                } else {
-                    tracing::info!(
-                        "Channel {}: CORS enabled for {} origins",
-                        self.channel_id,
-                        parsed_origins.len()
-                    );
-                    CorsLayer::new()
-                        .allow_origin(parsed_origins)
-                        .allow_methods([Method::POST, Method::OPTIONS])
-                        .allow_headers([CONTENT_TYPE, AUTHORIZATION])
-                        .max_age(Duration::from_secs(3600))
                 }
-            }
-            _ => {
-                // Default: Restrictive CORS (same-origin only effectively)
-                // No explicit origins = browsers will block cross-origin requests
-                tracing::info!(
-                    "Channel {}: CORS restricted (no cross-origin allowed)",
-                    self.channel_id
-                );
-                CorsLayer::new()
-                    .allow_methods([Method::POST])
-                    .allow_headers([CONTENT_TYPE])
-                    .max_age(Duration::from_secs(3600))
             }
         }
     }
