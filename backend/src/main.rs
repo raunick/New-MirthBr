@@ -1,15 +1,39 @@
 use axum::{
     routing::{get, post},
     Router,
+    http::{Request, StatusCode, HeaderValue},
+    middleware::{self, Next},
+    response::Response,
 };
 use std::net::SocketAddr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
+use tower_http::cors::{CorsLayer, Any};
 
 mod api;
 mod config;
 mod engine;
 mod storage;
 mod lua_helpers;
+
+// Auth Middleware
+async fn auth_middleware(req: Request<axum::body::Body>, next: Next) -> Result<Response, StatusCode> {
+    // Default key for dev simplicity, in prod should be forced env var
+    let api_key = std::env::var("API_KEY").unwrap_or_else(|_| "secret-123".to_string());
+    
+    let auth_header = req.headers().get("Authorization")
+        .and_then(|h| h.to_str().ok())
+        .and_then(|h| h.strip_prefix("Bearer "));
+
+    match auth_header {
+        Some(token) if token == api_key => {
+            Ok(next.run(req).await)
+        }
+        _ => {
+            tracing::warn!("Unauthorized access attempt");
+            Err(StatusCode::UNAUTHORIZED)
+        }
+    }
+}
 
 #[tokio::main]
 async fn main() {
@@ -25,8 +49,6 @@ async fn main() {
     tracing::info!("Starting MirthBR Backend...");
 
     let channel_manager = std::sync::Arc::new(engine::channel_manager::ChannelManager::new());
-
-use tower_http::cors::CorsLayer;
 
     // Auto-deploy "Hello World" Channel
     let hello_channel = storage::models::Channel {
@@ -55,14 +77,25 @@ use tower_http::cors::CorsLayer;
         tracing::error!("Failed to start Hello World channel: {}", e);
     }
 
-    // Build our application with a route
+    // CORS: Allow only frontend (localhost:3000)
+    let cors = CorsLayer::new()
+        .allow_origin("http://localhost:3000".parse::<HeaderValue>().unwrap())
+        .allow_methods(Any)
+        .allow_headers(Any);
+
+    // Protected API routes
+    let protected_routes = Router::new()
+        .route("/channels", post(api::handlers::channels::create_channel))
+        .route("/channels", get(api::handlers::channels::list_channels))
+        .route("/channels/:id/test", post(api::handlers::test::test_channel))
+        .route("/logs", get(api::handlers::logs::get_logs))
+        .layer(middleware::from_fn(auth_middleware));
+
+    // Build our application
     let app = Router::new()
         .route("/api/health", get(health_check))
-        .route("/api/channels", post(api::handlers::channels::create_channel))
-        .route("/api/channels", get(api::handlers::channels::list_channels))
-        .route("/api/channels/:id/test", post(api::handlers::test::test_channel))
-        .route("/api/logs", get(api::handlers::logs::get_logs))
-        .layer(CorsLayer::permissive()) // Deploy CORS layer *before* state to ensure it wraps everything
+        .nest("/api", protected_routes) // Nests under /api, so /channels becomes /api/channels
+        .layer(cors)
         .with_state(channel_manager);
 
     // Run it with hyper on localhost:3000

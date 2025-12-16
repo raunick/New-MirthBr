@@ -1,4 +1,4 @@
-use mlua::{Lua, Result};
+use mlua::{Lua, Result, StdLib, LuaOptions};
 use crate::engine::message::Message;
 use crate::lua_helpers;
 
@@ -12,10 +12,8 @@ impl LuaProcessor {
     }
 
     pub fn process(&self, msg: Message) -> anyhow::Result<Message> {
-        let lua = Lua::new();
-        
-        // Sandbox: Clean environment (optional for now)
-        // lua.sandbox(true)?;
+        // Sandbox: Only load safe libraries (excludes os, io, debug, package)
+        let lua = Lua::new_with(StdLib::ALL_SAFE, LuaOptions::default()).map_err(|e| anyhow::anyhow!("Lua init error: {}", e))?;
         
         // Register helpers
         lua_helpers::logging::register_logging(&lua)?;

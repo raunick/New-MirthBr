@@ -8,7 +8,7 @@ pub async fn create_channel(
     State(manager): State<Arc<ChannelManager>>,
     Json(payload): Json<Channel>
 ) -> impl IntoResponse {
-    tracing::info!("Received deploy request for channel: {}", payload.name);
+    tracing::info!("Received deploy request for channel: {:?}", payload.name);
     
     // In a real app we would save to DB first.
     // Here we just start it in memory.

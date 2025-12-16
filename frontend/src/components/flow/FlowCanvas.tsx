@@ -51,7 +51,7 @@ import ContextMenu from './ContextMenu';
 import LuaEditorModal from '../editor/LuaEditorModal';
 import { Button } from '@/components/ui/button';
 import { exportToRust } from '@/lib/flow-compiler';
-import { deployChannel } from '@/lib/api';
+import { deployChannel, testChannel } from '@/lib/api';
 import { validateConnection } from '@/lib/connectionValidation';
 import { Play, Save, Layout, Download, Upload } from 'lucide-react';
 import axios from 'axios';
@@ -272,10 +272,7 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
     const handleTest = useCallback(async (payloadType: string, payloadContent: string) => {
         const { channelId } = useFlowStore.getState();
         try {
-            await axios.post(`http://localhost:3001/api/channels/${channelId}/test`, {
-                payload_type: payloadType,
-                payload: payloadContent
-            });
+            await testChannel(channelId, payloadType, payloadContent);
         } catch (e: any) {
             console.error(e);
             throw e;
