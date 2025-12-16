@@ -51,7 +51,10 @@ export function isValidConnection(
     }
 
     // Source nodes cannot be target of a connection
-    if (targetCategory === 'source' && targetType !== 'mergeNode') {
+    // EXCEPTION: Configuration handles on Source nodes (e.g. config-port, config-url)
+    const isConfigHandle = connection.targetHandle?.startsWith('config-');
+
+    if (targetCategory === 'source' && targetType !== 'mergeNode' && !isConfigHandle) {
         return false;
     }
 

@@ -216,12 +216,10 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
         setEditingNodeId(null);
     };
 
-    const [channelId] = useState(() => crypto.randomUUID());
-
     const handleDeploy = async () => {
         setIsDeploying(true);
-        const payload = exportToRust(nodes, edges, channelName || "My Channel");
-        payload.id = channelId;
+        const { channelName, channelId } = useFlowStore.getState();
+        const payload = exportToRust(nodes, edges, channelName || "My Channel", channelId);
 
         console.log("Deploying:", payload);
         try {
@@ -272,6 +270,7 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
     }, [importFlow]);
 
     const handleTest = useCallback(async (payloadType: string, payloadContent: string) => {
+        const { channelId } = useFlowStore.getState();
         try {
             await axios.post(`http://localhost:3001/api/channels/${channelId}/test`, {
                 payload_type: payloadType,
@@ -281,7 +280,7 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
             console.error(e);
             throw e;
         }
-    }, [channelId]);
+    }, []);
 
     // Load flow on mount
     useEffect(() => {

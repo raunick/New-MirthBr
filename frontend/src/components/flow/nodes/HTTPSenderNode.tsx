@@ -18,10 +18,51 @@ const methodOptions = [
     { value: 'DELETE', label: 'DELETE' },
 ];
 
+import { useEffect } from 'react';
+import { useFlowStore } from '@/stores/useFlowStore';
+
 const HTTPSenderNode = ({ data, id }: NodeProps<HTTPSenderData>) => {
+    const nodes = useFlowStore((state) => state.nodes);
+    const edges = useFlowStore((state) => state.edges);
+
     const handleChange = (field: string, value: string | number) => {
         data.onDataChange?.(field, value);
     };
+
+    useEffect(() => {
+        const urlEdge = edges.find(e => e.target === id && e.targetHandle === 'config-url');
+        if (urlEdge) {
+            const sourceNode = nodes.find(n => n.id === urlEdge.source);
+            if (sourceNode) {
+                let newUrl = data.url || '';
+                try {
+                    let currentStr = newUrl.startsWith('http') ? newUrl : `http://${newUrl}`;
+                    // If empty or invalid, default to http://localhost
+                    if (!newUrl || newUrl === 'https://api.example.com') currentStr = 'http://localhost';
+
+                    const urlObj = new URL(currentStr);
+
+                    if (sourceNode.type === 'ipNode' && sourceNode.data.ip) {
+                        urlObj.hostname = sourceNode.data.ip;
+                        newUrl = urlObj.toString();
+                    } else if (sourceNode.type === 'portNode' && sourceNode.data.port) {
+                        urlObj.port = sourceNode.data.port.toString();
+                        newUrl = urlObj.toString();
+                    } else if (sourceNode.type === 'textNode' && sourceNode.data.text) {
+                        newUrl = sourceNode.data.text;
+                    }
+                } catch (e) {
+                    if (sourceNode.type === 'textNode') {
+                        newUrl = sourceNode.data.text;
+                    }
+                }
+
+                if (newUrl !== data.url) {
+                    handleChange('url', newUrl);
+                }
+            }
+        }
+    }, [nodes, edges, id, data.url]);
 
     const getMethodColor = (method: string) => {
         switch (method) {
@@ -70,14 +111,23 @@ const HTTPSenderNode = ({ data, id }: NodeProps<HTTPSenderData>) => {
                             displayClassName="hover:bg-[var(--background)] px-2 py-0.5 rounded cursor-pointer"
                             inputClassName="bg-[var(--background)] border border-[var(--glass-border)] rounded px-1 py-0.5 outline-none font-bold"
                         />
-                        <InlineEdit
-                            value={data.url || 'https://api.example.com'}
-                            onChange={(v) => handleChange('url', v)}
-                            placeholder="https://..."
-                            className="flex-1 text-sm font-mono text-[var(--foreground)]"
-                            displayClassName="hover:bg-[var(--background)] px-1 rounded cursor-text truncate"
-                            inputClassName="bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-0.5 w-full outline-none"
-                        />
+                        <div className="flex-1 relative group">
+                            <Handle
+                                type="target"
+                                position={Position.Left}
+                                id="config-url"
+                                className="!w-2 !h-2 !bg-[var(--warning)] !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                                style={{ left: '-6px', top: '50%', transform: 'translateY(-50%)' }}
+                            />
+                            <InlineEdit
+                                value={data.url || 'https://api.example.com'}
+                                onChange={(v) => handleChange('url', v)}
+                                placeholder="https://..."
+                                className="flex-1 text-sm font-mono text-[var(--foreground)]"
+                                displayClassName="hover:bg-[var(--background)] px-1 rounded cursor-text truncate"
+                                inputClassName="bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-0.5 w-full outline-none"
+                            />
+                        </div>
                     </div>
                 </div>
             </div>

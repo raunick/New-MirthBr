@@ -54,6 +54,15 @@ impl ChannelManager {
         let channel_id = channel.id;
         tracing::info!("Starting channel: {} ({})", channel.name, channel_id);
 
+        // Stop existing channel if redeploying
+        {
+            let mut channels = self.channels.lock().unwrap();
+            if let Some(handle) = channels.remove(&channel_id) {
+                tracing::info!("Stopping existing instance of channel: {}", channel_id);
+                handle.abort();
+            }
+        }
+
         // 1. Create communication channel (MPSC)
         let (tx, mut rx) = mpsc::channel(100);
 
@@ -188,8 +197,8 @@ impl ChannelManager {
                 // B. Send to Destinations (Parallel-ish or Sequential)
                 for dest_config in &destinations {
                     match &dest_config.kind {
-                        crate::storage::models::DestinationType::File { path, filename: _ } => {
-                            let writer = FileWriter::new(path.clone());
+                        crate::storage::models::DestinationType::File { path, filename } => {
+                            let writer = FileWriter::new(path.clone(), filename.clone());
                             if let Err(e) = writer.send(&msg).await {
                                 tracing::error!("Destination File failed: {}", e);
                                 // Log Error

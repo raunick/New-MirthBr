@@ -55,18 +55,38 @@ function isDestinationNode(type: string): boolean {
     return destinationTypes.includes(type);
 }
 
-function buildSourceConfig(node: Node): SourceConfig {
+function resolveConfigValue(targetNode: Node, field: string, handleId: string, nodes: Node[], edges: Edge[]): any {
+    const configEdge = edges.find(e => e.target === targetNode.id && e.targetHandle === handleId);
+    if (!configEdge) return targetNode.data[field];
+
+    const sourceNode = nodes.find(n => n.id === configEdge.source);
+    if (!sourceNode) return targetNode.data[field];
+
+    switch (sourceNode.type) {
+        case 'portNode': return Number(sourceNode.data.port);
+        case 'ipNode': return sourceNode.data.ip;
+        case 'textNode': return sourceNode.data.value ?? sourceNode.data.text;
+        default: return targetNode.data[field];
+    }
+}
+
+function buildSourceConfig(node: Node, nodes: Node[], edges: Edge[]): SourceConfig {
     const { type, data } = node;
     switch (type) {
         case 'httpListener':
             return {
                 type: 'http_listener',
-                config: { port: Number(data.port) || 8080, path: data.path }
+                config: {
+                    port: Number(resolveConfigValue(node, 'port', 'config-port', nodes, edges)) || 8080,
+                    path: resolveConfigValue(node, 'path', 'config-path', nodes, edges)
+                }
             };
         case 'tcpListener':
             return {
                 type: 'tcp_listener',
-                config: { port: Number(data.port) || 9090 }
+                config: {
+                    port: Number(resolveConfigValue(node, 'port', 'config-port', nodes, edges)) || 9090
+                }
             };
         case 'fileReader':
             return {
@@ -91,7 +111,7 @@ function buildSourceConfig(node: Node): SourceConfig {
     }
 }
 
-function buildProcessorConfig(node: Node): ProcessorConfig {
+function buildProcessorConfig(node: Node, nodes: Node[], edges: Edge[]): ProcessorConfig {
     const { id, type, data } = node;
     const base = { id, name: data.label || 'Processor' };
 
@@ -115,7 +135,7 @@ function buildProcessorConfig(node: Node): ProcessorConfig {
     }
 }
 
-function buildDestinationConfig(node: Node): DestinationConfig {
+function buildDestinationConfig(node: Node, nodes: Node[], edges: Edge[]): DestinationConfig {
     const { id, type, data } = node;
     const base = { id, name: data.label || 'Destination' };
 
@@ -137,9 +157,9 @@ function buildDestinationConfig(node: Node): DestinationConfig {
     }
 }
 
-export function exportToRust(nodes: Node[], edges: Edge[], channelName: string = "New Channel"): BackChannel {
+export function exportToRust(nodes: Node[], edges: Edge[], channelName: string = "New Channel", channelId?: string): BackChannel {
     const channel: BackChannel = {
-        id: crypto.randomUUID(),
+        id: channelId || crypto.randomUUID(),
         name: channelName,
         enabled: true,
         source: { type: 'http_listener', config: { port: 8080 } },
@@ -150,7 +170,7 @@ export function exportToRust(nodes: Node[], edges: Edge[], channelName: string =
     // Find the source node
     const sourceNode = nodes.find(n => isSourceNode(n.type || ''));
     if (sourceNode) {
-        channel.source = buildSourceConfig(sourceNode);
+        channel.source = buildSourceConfig(sourceNode, nodes, edges);
     }
 
     // Walk the graph from source
@@ -175,9 +195,9 @@ export function exportToRust(nodes: Node[], edges: Edge[], channelName: string =
         const nodeType = targetNode.type || '';
 
         if (isProcessorNode(nodeType)) {
-            channel.processors.push(buildProcessorConfig(targetNode));
+            channel.processors.push(buildProcessorConfig(targetNode, nodes, edges));
         } else if (isDestinationNode(nodeType)) {
-            channel.destinations.push(buildDestinationConfig(targetNode));
+            channel.destinations.push(buildDestinationConfig(targetNode, nodes, edges));
         }
     }
 
@@ -188,7 +208,7 @@ export function exportToRust(nodes: Node[], edges: Edge[], channelName: string =
             // Check if it has incoming edges
             const hasIncoming = edges.some(e => e.target === node.id);
             if (hasIncoming) {
-                channel.destinations.push(buildDestinationConfig(node));
+                channel.destinations.push(buildDestinationConfig(node, nodes, edges));
             }
         }
     });

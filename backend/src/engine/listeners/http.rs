@@ -8,6 +8,7 @@ use tokio::sync::mpsc;
 use crate::engine::message::Message;
 use uuid::Uuid;
 use std::sync::Arc;
+use axum::http::Method;
 
 pub struct HttpListener {
     pub port: u16,
@@ -19,10 +20,16 @@ pub struct HttpListener {
 use tower_http::cors::CorsLayer;
 
 impl HttpListener {
+
     pub async fn start(&self) {
         let app = Router::new()
             .route(&self.path, post(handler))
-            .layer(CorsLayer::permissive()) // Add CORS
+            .layer(
+                CorsLayer::new()
+                    .allow_origin(tower_http::cors::Any)
+                    .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+                    .allow_headers(tower_http::cors::Any)
+            ) // Add CORS explicitly
             .with_state(AppState {
                 channel_id: self.channel_id,
                 sender: self.sender.clone(),

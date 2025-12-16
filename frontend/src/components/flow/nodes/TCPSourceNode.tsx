@@ -9,10 +9,28 @@ interface TCPSourceData {
     onDataChange?: (field: string, value: string | number) => void;
 }
 
+import { useEffect } from 'react';
+import { useFlowStore } from '@/stores/useFlowStore';
+
 const TCPSourceNode = ({ data, id }: NodeProps<TCPSourceData>) => {
+    const nodes = useFlowStore((state) => state.nodes);
+    const edges = useFlowStore((state) => state.edges);
+
     const handleChange = (field: string, value: string | number) => {
         data.onDataChange?.(field, value);
     };
+
+    useEffect(() => {
+        const configEdge = edges.find(e => e.target === id && e.targetHandle === 'config-port');
+        if (configEdge) {
+            const sourceNode = nodes.find(n => n.id === configEdge.source);
+            if (sourceNode && sourceNode.type === 'portNode' && sourceNode.data.port !== undefined) {
+                if (sourceNode.data.port != data.port) {
+                    handleChange('port', sourceNode.data.port);
+                }
+            }
+        }
+    }, [nodes, edges, id, data.port]);
 
     return (
         <div className="flow-node source-tcp px-4 py-3 w-[240px]">
@@ -32,7 +50,14 @@ const TCPSourceNode = ({ data, id }: NodeProps<TCPSourceData>) => {
                 </div>
             </div>
 
-            <div className="mt-3 p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)]">
+            <div className="mt-3 p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] relative group">
+                <Handle
+                    type="target"
+                    position={Position.Left}
+                    id="config-port"
+                    className="!w-2 !h-2 !bg-[var(--warning)] !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ left: '-6px', top: '50%', transform: 'translateY(-50%)' }}
+                />
                 <div className="flex items-center justify-between">
                     <span className="text-xs text-[var(--foreground-muted)]">Port</span>
                     <InlineEdit

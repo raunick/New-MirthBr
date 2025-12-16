@@ -44,7 +44,9 @@ interface FlowState {
 
     // Channel configuration
     channelName: string;
+    channelId: string;
     setChannelName: (name: string) => void;
+    setChannelId: (id: string) => void;
 }
 
 const nodeDefaults: Record<string, NodeData> = {
@@ -81,71 +83,90 @@ const nodeDefaults: Record<string, NodeData> = {
 
 // Complete example workflow demonstrating MirthBR capabilities
 const initialNodes: Node<NodeData>[] = [
+    // Documentation
+    {
+        id: 'comment-1',
+        type: 'commentNode',
+        position: { x: 40, y: 40 },
+        data: {
+            label: 'Demo: Configuração Dinâmica',
+            text: 'Este fluxo demonstra a interconexão de nodes!\n\n1. O "Porta Serviço" (9090) configura o Listener.\n2. O "Caminho Base" configura a rota do Listener.\n3. O "URL Template" monta uma URL dinâmica usando variáveis ${Porta Serviço} e ${Caminho Base}.\n4. O Sender envia para a URL montada.',
+            color: '#dbeafe'
+        }
+    },
+    // Configuration Nodes
+    {
+        id: 'config-port',
+        type: 'portNode',
+        position: { x: 40, y: 250 },
+        data: { label: 'Porta Serviço', port: 9090 }
+    },
+    {
+        id: 'config-path',
+        type: 'textNode',
+        position: { x: 40, y: 380 },
+        data: { label: 'Caminho Base', text: '/api/v1', isTemplate: false }
+    },
     // Source
     {
         id: 'source-1',
         type: 'httpListener',
-        position: { x: 50, y: 200 },
-        data: { label: 'HTTP Listener', port: 8080, path: '/api/hl7' }
+        position: { x: 320, y: 250 },
+        data: { label: 'API Gateway', port: 8080, path: '/' }
     },
-    // Comment/Documentation
-    {
-        id: 'comment-1',
-        type: 'commentNode',
-        position: { x: 50, y: 50 },
-        data: { label: 'Workflow de Exemplo', text: 'Este workflow recebe mensagens HL7 via HTTP, processa com parser HL7, transforma com Lua script, e salva em arquivo.', color: '#dbeafe' }
-    },
-    // Processors
+    // Processor
     {
         id: 'proc-1',
-        type: 'hl7Parser',
-        position: { x: 300, y: 200 },
-        data: { label: 'HL7 Parser', inputFormat: 'hl7v2', outputFormat: 'json' }
-    },
-    {
-        id: 'proc-2',
         type: 'luaScript',
-        position: { x: 550, y: 200 },
-        data: { label: 'Transform', code: '-- Add processing timestamp\nlocal data = json.decode(msg.content)\ndata.processedAt = os.date("%Y-%m-%dT%H:%M:%S")\nlog.info("Processing message: " .. (data.MSH and data.MSH[10] or "unknown"))\nreturn json.encode(data)' }
+        position: { x: 600, y: 250 },
+        data: { label: 'Logger', code: 'log.info("Recebido na porta: " .. (msg.port or "configurada"))\nreturn msg' }
     },
-    // Logger for monitoring
+    // Template for Dynamic Destination
     {
-        id: 'util-1',
-        type: 'loggerNode',
-        position: { x: 550, y: 350 },
-        data: { label: 'Logger', level: 'info', prefix: '[HL7-PROC]' }
+        id: 'template-url',
+        type: 'textNode',
+        position: { x: 600, y: 400 },
+        data: {
+            label: 'URL Template',
+            text: 'http://localhost:${Porta Serviço}${Caminho Base}/callback',
+            isTemplate: true
+        }
     },
     // Destination
     {
         id: 'dest-1',
-        type: 'fileWriter',
-        position: { x: 800, y: 200 },
-        data: { label: 'File Writer', path: './output/hl7', filename: '${timestamp}_msg.json' }
-    },
-    // Alternative HTTP destination
-    {
-        id: 'dest-2',
         type: 'httpSender',
-        position: { x: 800, y: 350 },
-        data: { label: 'HTTP Sender', url: 'https://api.example.com/webhook', method: 'POST' }
-    },
+        position: { x: 900, y: 250 },
+        data: { label: 'Callback Sender', url: 'http://placeholder', method: 'POST' }
+    }
 ];
 
 const initialEdges: Edge[] = [
-    { id: 'e1-2', source: 'source-1', target: 'proc-1', animated: true },
-    { id: 'e2-3', source: 'proc-1', target: 'proc-2', animated: true },
-    { id: 'e3-4', source: 'proc-2', target: 'dest-1', animated: true },
-    { id: 'e3-5', source: 'proc-2', target: 'util-1', animated: true },
-    { id: 'e5-6', source: 'util-1', target: 'dest-2', animated: true },
+    // Flow Edges (Standard)
+    { id: 'flow-1', source: 'source-1', target: 'proc-1', animated: true },
+    { id: 'flow-2', source: 'proc-1', target: 'dest-1', animated: true },
+
+    // Config Edges (Dotted/Colored)
+    { id: 'cfg-1', source: 'config-port', target: 'source-1', targetHandle: 'config-port', animated: true, style: { stroke: '#fbbf24', strokeDasharray: '5 5' } },
+    { id: 'cfg-2', source: 'config-path', target: 'source-1', targetHandle: 'config-path', animated: true, style: { stroke: '#fbbf24', strokeDasharray: '5 5' } },
+
+    // Template Inputs
+    { id: 'tpl-1', source: 'config-port', target: 'template-url', animated: true, style: { stroke: '#fbbf24', strokeDasharray: '5 5' } },
+    { id: 'tpl-2', source: 'config-path', target: 'template-url', animated: true, style: { stroke: '#fbbf24', strokeDasharray: '5 5' } },
+
+    // Dynamic Destination Config
+    { id: 'cfg-3', source: 'template-url', target: 'dest-1', targetHandle: 'config-url', animated: true, style: { stroke: '#fbbf24', strokeDasharray: '5 5' } }
 ];
 
 export const useFlowStore = create<FlowState>((set, get) => ({
     nodes: initialNodes,
     edges: initialEdges,
     channelName: 'My Channel',
+    channelId: crypto.randomUUID(), // Initialize with a valid UUID
     callbacks: {},
 
     setChannelName: (name) => set({ channelName: name }),
+    setChannelId: (id) => set({ channelId: id }),
     onNodesChange: (changes: NodeChange[]) => {
         set({
             nodes: applyNodeChanges(changes, get().nodes),
@@ -283,14 +304,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     },
 
     saveFlow: () => {
-        const { nodes, edges, channelName } = get();
+        const { nodes, edges, channelName, channelId } = get();
         const flowData = {
-            nodes: nodes.map(n => ({
-                ...n,
-                data: { ...n.data, onDataChange: undefined, onEdit: undefined, onEditCondition: undefined, onEditQuery: undefined, onTest: undefined }
-            })),
+            nodes,
             edges,
             channelName,
+            channelId,
             savedAt: new Date().toISOString(),
         };
         localStorage.setItem('mirth-flow', JSON.stringify(flowData));
@@ -301,63 +320,63 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         if (saved) {
             try {
                 const flowData = JSON.parse(saved);
+
+                // Validate UUID
+                let cid = flowData.channelId;
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                if (!cid || !uuidRegex.test(cid)) {
+                    cid = crypto.randomUUID();
+                }
+
                 set({
                     nodes: flowData.nodes || [],
                     edges: flowData.edges || [],
                     channelName: flowData.channelName || 'My Channel',
+                    channelId: cid
                 });
             } catch (e) {
-                console.error('Failed to load flow:', e);
+                console.error('Failed to load flow', e);
             }
         }
     },
 
     exportFlow: () => {
-        const { nodes, edges, channelName } = get();
+        const { nodes, edges, channelName, channelId } = get();
         const flowData = {
             version: '1.0',
             name: channelName || 'MirthBR Workflow',
-            exportedAt: new Date().toISOString(),
             channelName,
-            nodes: nodes.map(n => ({
-                ...n,
-                data: {
-                    ...n.data,
-                    onDataChange: undefined,
-                    onEdit: undefined,
-                    onEditCondition: undefined,
-                    onEditQuery: undefined,
-                    onTest: undefined
-                }
-            })),
+            channelId,
+            nodes,
             edges,
+            exportedAt: new Date().toISOString(),
         };
 
         const blob = new Blob([JSON.stringify(flowData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `mirthbr-workflow-${(channelName || 'workflow').replace(/\s+/g, '-').toLowerCase()}-${new Date().toISOString().slice(0, 10)}.json`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${(channelName || 'workflow').toLowerCase().replace(/\s+/g, '_')}.json`;
+        a.click();
         URL.revokeObjectURL(url);
     },
 
-    importFlow: (data: { nodes: Node<NodeData>[]; edges: Edge[]; channelName?: string }) => {
+    importFlow: (data: { nodes: Node<NodeData>[]; edges: Edge[]; channelName?: string; channelId?: string }) => {
         if (data.nodes && Array.isArray(data.nodes)) {
+            // Validate imported channelId
+            let cid = data.channelId;
+            const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            if (!cid || !uuidRegex.test(cid)) {
+                cid = crypto.randomUUID();
+            }
+
             set({
                 nodes: data.nodes,
                 edges: data.edges || [],
                 channelName: data.channelName || 'Imported Channel',
+                channelId: cid
             });
-            // Also save to localStorage
-            localStorage.setItem('mirth-flow', JSON.stringify({
-                nodes: data.nodes,
-                edges: data.edges || [],
-                channelName: data.channelName || 'Imported Channel',
-                savedAt: new Date().toISOString(),
-            }));
+            get().saveFlow();
         }
     },
 

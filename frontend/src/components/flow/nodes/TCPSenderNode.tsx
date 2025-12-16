@@ -10,10 +10,35 @@ interface TCPSenderData {
     onDataChange?: (field: string, value: string | number) => void;
 }
 
+import { useEffect } from 'react';
+import { useFlowStore } from '@/stores/useFlowStore';
+
 const TCPSenderNode = ({ data, id }: NodeProps<TCPSenderData>) => {
+    const nodes = useFlowStore((state) => state.nodes);
+    const edges = useFlowStore((state) => state.edges);
+
     const handleChange = (field: string, value: string | number) => {
         data.onDataChange?.(field, value);
     };
+
+    useEffect(() => {
+        // Sync Port
+        const portEdge = edges.find(e => e.target === id && e.targetHandle === 'config-port');
+        if (portEdge) {
+            const node = nodes.find(n => n.id === portEdge.source);
+            if (node?.type === 'portNode' && node.data.port !== undefined && node.data.port != data.port) {
+                handleChange('port', node.data.port);
+            }
+        }
+        // Sync Host
+        const hostEdge = edges.find(e => e.target === id && e.targetHandle === 'config-host');
+        if (hostEdge) {
+            const node = nodes.find(n => n.id === hostEdge.source);
+            if (node?.type === 'ipNode' && node.data.ip !== undefined && node.data.ip != data.host) {
+                handleChange('host', node.data.ip);
+            }
+        }
+    }, [nodes, edges, id, data.port, data.host]);
 
     return (
         <div className="flow-node destination px-4 py-3 w-[260px]">
@@ -41,7 +66,14 @@ const TCPSenderNode = ({ data, id }: NodeProps<TCPSenderData>) => {
 
             <div className="mt-3 p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)]">
                 <div className="flex items-center gap-2">
-                    <div className="flex-1">
+                    <div className="flex-1 relative group">
+                        <Handle
+                            type="target"
+                            position={Position.Left}
+                            id="config-host"
+                            className="!w-2 !h-2 !bg-[var(--warning)] !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{ left: '-6px', top: '50%', transform: 'translateY(-50%)' }}
+                        />
                         <div className="text-xs text-[var(--foreground-muted)] mb-1">Host</div>
                         <InlineEdit
                             value={data.host || '127.0.0.1'}
@@ -51,7 +83,14 @@ const TCPSenderNode = ({ data, id }: NodeProps<TCPSenderData>) => {
                             inputClassName="bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-0.5 w-full outline-none"
                         />
                     </div>
-                    <div className="w-20">
+                    <div className="w-20 relative group">
+                        <Handle
+                            type="target"
+                            position={Position.Left}
+                            id="config-port"
+                            className="!w-2 !h-2 !bg-[var(--warning)] !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{ left: '-6px', top: '50%', transform: 'translateY(-50%)' }}
+                        />
                         <div className="text-xs text-[var(--foreground-muted)] mb-1">Port</div>
                         <InlineEdit
                             value={data.port || 9000}

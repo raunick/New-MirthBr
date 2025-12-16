@@ -17,11 +17,52 @@ OBR|1|123456||CBC|R||202305041005|||||||||||||||||||F`,
     rest: `{\n  "method": "POST",\n  "headers": {\n    "Content-Type": "application/json"\n  },\n  "body": {\n    "foo": "bar"\n  }\n}`
 };
 
+import { useFlowStore } from '@/stores/useFlowStore';
+
 const TestNode = ({ data, id }: { data: any, id: string }) => {
     const [expanded, setExpanded] = useState(false);
     const [sendMode, setSendMode] = useState<'inject' | 'http'>('inject');
     const [httpMethod, setHttpMethod] = useState('POST');
     const [httpUrl, setHttpUrl] = useState('http://localhost:8080/api/messages');
+
+    const nodes = useFlowStore((state) => state.nodes);
+    const edges = useFlowStore((state) => state.edges);
+
+    useEffect(() => {
+        const urlEdge = edges.find(e => e.target === id && e.targetHandle === 'config-url');
+        if (!urlEdge) return;
+
+        const sourceNode = nodes.find(n => n.id === urlEdge.source);
+        if (!sourceNode) return;
+
+        let newUrl = httpUrl;
+        try {
+            // Basic URL parsing/construction
+            // If currently valid URL, try to update parts
+            // If not, replace entirely if text
+            let currentStr = httpUrl.startsWith('http') ? httpUrl : `http://${httpUrl}`;
+            const urlObj = new URL(currentStr);
+
+            if (sourceNode.type === 'ipNode' && sourceNode.data.ip) {
+                urlObj.hostname = sourceNode.data.ip;
+                newUrl = urlObj.toString();
+            } else if (sourceNode.type === 'portNode' && sourceNode.data.port) {
+                urlObj.port = sourceNode.data.port.toString();
+                newUrl = urlObj.toString();
+            } else if (sourceNode.type === 'textNode') {
+                newUrl = sourceNode.data.value ?? sourceNode.data.text ?? '';
+            }
+        } catch (e) {
+            // If parsing fails, just replace if it's text
+            if (sourceNode.type === 'textNode') {
+                newUrl = sourceNode.data.value ?? sourceNode.data.text ?? '';
+            }
+        }
+
+        if (newUrl !== httpUrl) {
+            setHttpUrl(newUrl);
+        }
+    }, [nodes, edges, id]); // Intentionally omitting httpUrl to avoid loops, relying on effect re-run on nodes/edges change
 
     const [payloadType, setPayloadType] = useState(data.payloadType || 'hl7');
     const [payload, setPayload] = useState(data.payload || PAYLOAD_PRESETS.hl7);
@@ -130,7 +171,14 @@ const TestNode = ({ data, id }: { data: any, id: string }) => {
                         {/* HTTP Config (Only if HTTP mode) */}
                         {sendMode === 'http' && (
                             <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                                <div className="flex gap-2">
+                                <div className="flex gap-2 relative group">
+                                    <Handle
+                                        type="target"
+                                        position={Position.Left}
+                                        id="config-url"
+                                        className="!w-2 !h-2 !bg-[var(--warning)] !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                                        style={{ left: '-20px', top: '50%', transform: 'translateY(-50%)' }}
+                                    />
                                     <select
                                         value={httpMethod}
                                         onChange={(e) => setHttpMethod(e.target.value)}
