@@ -15,7 +15,7 @@ type SourceConfig =
     | { type: 'tcp_listener'; config: { port: number } }
     | { type: 'file_reader'; config: { path: string; pattern?: string } }
     | { type: 'database_poller'; config: { query: string; interval: number } }
-    | { type: 'test_source'; config: { payloadType: string; payload: string } };
+    | { type: 'test_source'; config: { payload_type: string; payload: string } };
 
 type ProcessorConfig = {
     id: string;
@@ -102,7 +102,7 @@ function buildSourceConfig(node: Node, nodes: Node[], edges: Edge[]): SourceConf
             return {
                 type: 'test_source',
                 config: {
-                    payloadType: data.payloadType || 'hl7',
+                    payload_type: data.payloadType || 'hl7',
                     payload: data.payload || ''
                 }
             };
