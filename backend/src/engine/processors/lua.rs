@@ -163,6 +163,9 @@ mod tests {
             id: Uuid::new_v4(),
             channel_id: Uuid::new_v4(),
             content: "hello".to_string(),
+            metadata: std::collections::HashMap::new(),
+            timestamp: chrono::Utc::now(),
+            origin: Some("test".to_string()),
         };
         let result = processor.process(msg).unwrap();
         assert_eq!(result.content, "HELLO");
@@ -176,6 +179,9 @@ mod tests {
             id: Uuid::new_v4(),
             channel_id: Uuid::new_v4(),
             content: "test".to_string(),
+            metadata: std::collections::HashMap::new(),
+            timestamp: chrono::Utc::now(),
+            origin: Some("test".to_string()),
         };
         assert!(processor.process(msg).is_err());
     }

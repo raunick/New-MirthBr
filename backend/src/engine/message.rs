@@ -10,16 +10,19 @@ pub struct Message {
     pub content: String,
     pub metadata: HashMap<String, String>,
     pub timestamp: DateTime<Utc>,
+    #[serde(default)]
+    pub origin: Option<String>,
 }
 
 impl Message {
-    pub fn new(channel_id: Uuid, content: String) -> Self {
+    pub fn new(channel_id: Uuid, content: String, origin: String) -> Self {
         Self {
             id: Uuid::new_v4(),
             channel_id,
             content,
             metadata: HashMap::new(),
             timestamp: Utc::now(),
+            origin: Some(origin),
         }
     }
 }

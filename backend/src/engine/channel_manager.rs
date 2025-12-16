@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 use crate::storage::models::{Channel, SourceConfig, ProcessorType};
@@ -114,11 +115,20 @@ impl ChannelManager {
         let processors = channel.processors.clone();
         let destinations = channel.destinations.clone();
         let logs_arc = self.logs.clone(); // Clone ARC for task
+        let channel_name = channel.name.clone(); // Clone for async task
 
         // Cloning data needed for the async task
         let handle = tokio::spawn(async move {
             while let Some(mut msg) = rx.recv().await {
-                tracing::info!("Processing message: {}", msg.id);
+                let start_time = Instant::now();
+                let origin = msg.origin.as_deref().unwrap_or("unknown");
+                
+                tracing::info!(
+                    channel = %channel_name,
+                    message_id = %msg.id,
+                    origin = %origin,
+                    "Processing message"
+                );
                 // Log to buffer
                 {
                    if let Ok(mut logs) = logs_arc.lock() {
@@ -126,7 +136,7 @@ impl ChannelManager {
                        logs.push_back(LogEntry {
                            timestamp: Utc::now(),
                            level: "INFO".to_string(),
-                           message: format!("Processing message {}", msg.id),
+                           message: format!("[Channel: {}] Processing message {} (Origin: {})", channel_name, msg.id, origin),
                            channel_id: Some(channel_id),
                        });
                    }
@@ -215,15 +225,29 @@ impl ChannelManager {
                     }
                 }
 
-                if failed { continue; } // Skip destinations if processing failed
+                if failed {
+                    let elapsed = start_time.elapsed();
+                    tracing::warn!(
+                        channel = %channel_name,
+                        message_id = %msg.id,
+                        processing_time_ms = elapsed.as_millis(),
+                        "Message processing failed"
+                    );
+                    continue;
+                } // Skip destinations if processing failed
 
                 // B. Send to Destinations (Parallel-ish or Sequential)
                 for dest_config in &destinations {
                     match &dest_config.kind {
                         crate::storage::models::DestinationType::File { path, filename } => {
-                            let writer = FileWriter::new(path.clone(), filename.clone());
+                            let writer = FileWriter::new(path.clone(), filename.clone(), channel_name.clone());
                             if let Err(e) = writer.send(&msg).await {
-                                tracing::error!("Destination File failed: {}", e);
+                                tracing::error!(
+                                    channel = %channel_name,
+                                    path = %path,
+                                    error = %e,
+                                    "Destination File failed"
+                                );
                                 // Log Error
                                 {
                                     if let Ok(mut logs) = logs_arc.lock() {
@@ -231,7 +255,7 @@ impl ChannelManager {
                                         logs.push_back(LogEntry {
                                             timestamp: Utc::now(),
                                             level: "ERROR".to_string(),
-                                            message: format!("Destination File failed: {}", e),
+                                            message: format!("[Channel: {}] Destination File failed: {}", channel_name, e),
                                             channel_id: Some(channel_id),
                                         });
                                     }
@@ -244,7 +268,7 @@ impl ChannelManager {
                                         logs.push_back(LogEntry {
                                             timestamp: Utc::now(),
                                             level: "INFO".to_string(),
-                                            message: format!("Written to file: {}", path),
+                                            message: format!("[Channel: {}] Written to file: {}", channel_name, path),
                                             channel_id: Some(channel_id),
                                         });
                                     }
@@ -252,14 +276,29 @@ impl ChannelManager {
                             }
                         },
                         crate::storage::models::DestinationType::Http { url, method } => {
-                             let sender = HttpSender::new(url.clone(), method.clone());
+                             let sender = HttpSender::new(url.clone(), method.clone(), channel_name.clone());
                              if let Err(e) = sender.send(&msg).await {
-                                tracing::error!("Destination HTTP failed: {}", e);
+                                tracing::error!(
+                                    channel = %channel_name,
+                                    url = %url,
+                                    method = %method,
+                                    error = %e,
+                                    "Destination HTTP failed"
+                                );
                              }
                         },
                         _ => tracing::warn!("Destination type not implemented yet"),
                     }
                 }
+
+                // Log processing complete with timing
+                let elapsed = start_time.elapsed();
+                tracing::info!(
+                    channel = %channel_name,
+                    message_id = %msg.id,
+                    processing_time_ms = elapsed.as_millis(),
+                    "Message processed"
+                );
             }
         });
 
@@ -276,7 +315,7 @@ impl ChannelManager {
         };
 
         if let Some(tx) = sender {
-             let msg = crate::engine::message::Message::new(channel_id, payload);
+             let msg = crate::engine::message::Message::new(channel_id, payload, "Manual Injection".to_string());
             tx.send(msg).await.map_err(|_| anyhow::anyhow!("Channel receiver dropped"))?;
             self.add_log("INFO", "Manual message injected".to_string(), Some(channel_id));
             Ok(())

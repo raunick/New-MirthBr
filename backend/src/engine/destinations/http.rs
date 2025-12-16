@@ -23,6 +23,7 @@ pub struct HttpSender {
     url: String,
     method: String,
     client: Client,
+    channel_name: String,
 }
 
 impl HttpSender {
@@ -97,7 +98,7 @@ impl HttpSender {
     }
 
     /// Create a new HttpSender with URL validation
-    pub fn new(url: String, method: String) -> Self {
+    pub fn new(url: String, method: String, channel_name: String) -> Self {
         // Validate URL on construction - log warning but don't fail
         // (validation will be enforced on send)
         if let Err(e) = Self::validate_url(&url) {
@@ -121,6 +122,7 @@ impl HttpSender {
                 .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
                 .build()
                 .unwrap_or_else(|_| Client::new()),
+            channel_name,
         }
     }
 
@@ -146,14 +148,19 @@ impl HttpSender {
         let status = res.status();
         if !status.is_success() {
             tracing::warn!(
-                "⚠️ HTTP Sender to {} returned status: {}",
-                validated_url.host_str().unwrap_or("unknown"),
-                status
+                channel = %self.channel_name,
+                url = %validated_url.host_str().unwrap_or("unknown"),
+                method = %self.method,
+                status = %status,
+                "HTTP destination returned non-success status"
             );
         } else {
             tracing::info!(
-                "✅ HTTP Sender delivered to {}",
-                validated_url.host_str().unwrap_or("unknown")
+                channel = %self.channel_name,
+                url = %validated_url.host_str().unwrap_or("unknown"),
+                method = %self.method,
+                status = %status,
+                "HTTP destination success"
             );
         }
 

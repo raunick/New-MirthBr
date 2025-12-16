@@ -1,7 +1,7 @@
 use axum::{
     routing::post,
     Router,
-    extract::State,
+    extract::{State, ConnectInfo},
     http::{header::{CONTENT_TYPE, AUTHORIZATION}, HeaderValue, Method},
 };
 use std::net::SocketAddr;
@@ -108,6 +108,8 @@ impl HttpListener {
             .with_state(AppState {
                 channel_id: self.channel_id,
                 sender: self.sender.clone(),
+                port: self.port,
+                path: self.path.clone(),
             });
 
         // Configurable bind address for listeners
@@ -127,9 +129,12 @@ impl HttpListener {
             }
         };
         
-        // Spawn the server in a new task
+        // Spawn the server in a new task with ConnectInfo support
         tokio::spawn(async move {
-            if let Err(e) = axum::serve(listener, app).await {
+            if let Err(e) = axum::serve(
+                listener,
+                app.into_make_service_with_connect_info::<SocketAddr>()
+            ).await {
                 tracing::error!("Channel server error: {}", e);
             }
         });
@@ -140,13 +145,17 @@ impl HttpListener {
 struct AppState {
     channel_id: Uuid,
     sender: mpsc::Sender<Message>,
+    port: u16,
+    path: String,
 }
 
 async fn handler(
     State(state): State<AppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     body: String
 ) -> &'static str {
-    let msg = Message::new(state.channel_id, body);
+    let origin = format!("HTTP :{}{} from {}", state.port, state.path, addr.ip());
+    let msg = Message::new(state.channel_id, body, origin);
     
     // Send to channel processing loop
     if let Err(e) = state.sender.send(msg).await {
@@ -156,3 +165,4 @@ async fn handler(
 
     "Received"
 }
+
