@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from 'react';
-import { X, Server, Cpu, Database, Activity, Layers, GitBranch, Clock, Zap } from 'lucide-react';
+import { X, Server, Cpu, Database, Activity, Layers, GitBranch, Clock, Zap, Eye, Code } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useFlowStore } from '@/stores/useFlowStore';
 import axios from 'axios';
@@ -13,7 +13,7 @@ interface SettingsModalProps {
 
 interface BackendInfo {
     isConnected: boolean;
-    channels: { id: string; name: string; frontend_schema?: any }[];
+    channels: { id: string; name: string; config?: any; frontend_schema?: any }[];
     version: string;
     uptime?: string;
 }
@@ -32,14 +32,20 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         version: '0.1.0',
     });
     const [loading, setLoading] = useState(true);
+    const [selectedChannel, setSelectedChannel] = useState<any>(null);
 
     const handleLoadChannel = (channel: any) => {
         if (channel.frontend_schema) {
             loadFlow(channel.frontend_schema);
             onClose();
         } else {
-            alert('Este canal não possui um layout visual salvo.');
+            // Open viewer for Backend Only channels
+            setSelectedChannel(channel);
         }
+    };
+
+    const handleCloseViewer = () => {
+        setSelectedChannel(null);
     };
 
     // Calculate system stats
@@ -105,7 +111,62 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 onClick={onClose}
             />
 
-            {/* Modal */}
+            {/* Channel Viewer Modal */}
+            {selectedChannel && (
+                <div className="absolute inset-0 z-60 flex items-center justify-center">
+                    <div
+                        className="absolute inset-0 bg-black/40"
+                        onClick={handleCloseViewer}
+                    />
+                    <div className="relative w-full max-w-2xl mx-4 glass rounded-2xl border border-[var(--glass-border)] shadow-2xl overflow-hidden">
+                        {/* Header */}
+                        <div className="flex items-center justify-between p-4 border-b border-[var(--glass-border)]">
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-lg bg-[var(--secondary)]/20 flex items-center justify-center">
+                                    <Code size={16} className="text-[var(--secondary)]" />
+                                </div>
+                                <div>
+                                    <h3 className="text-lg font-semibold text-[var(--foreground)]">
+                                        {selectedChannel.name}
+                                    </h3>
+                                    <p className="text-xs text-[var(--foreground-muted)]">
+                                        ID: {selectedChannel.id}
+                                    </p>
+                                </div>
+                            </div>
+                            <button
+                                onClick={handleCloseViewer}
+                                className="p-2 rounded-lg hover:bg-[var(--glass-bg)] transition-colors"
+                            >
+                                <X size={18} className="text-[var(--foreground-muted)]" />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-4 max-h-[60vh] overflow-y-auto">
+                            <h4 className="text-sm font-medium text-[var(--foreground-muted)] mb-2">
+                                Configuração do Canal (JSON)
+                            </h4>
+                            <pre className="p-4 rounded-xl bg-[var(--background)] border border-[var(--glass-border)] text-sm text-[var(--foreground)] overflow-x-auto font-mono">
+                                {JSON.stringify(selectedChannel.config, null, 2)}
+                            </pre>
+                        </div>
+
+                        {/* Footer */}
+                        <div className="flex justify-end gap-3 p-4 border-t border-[var(--glass-border)]">
+                            <Button
+                                variant="outline"
+                                onClick={handleCloseViewer}
+                                className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
+                            >
+                                Fechar
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Main Modal */}
             <div className="relative w-full max-w-2xl mx-4 glass rounded-2xl border border-[var(--glass-border)] shadow-2xl overflow-hidden">
                 {/* Header */}
                 <div className="flex items-center justify-between p-6 border-b border-[var(--glass-border)]">
@@ -252,8 +313,15 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                                                 >
                                                     <div className="w-2 h-2 rounded-full bg-[var(--success)]" />
                                                     <span className="text-sm text-[var(--foreground)]">{channel.name}</span>
-                                                    <span className="text-xs text-[var(--foreground-muted)] ml-auto">
-                                                        {channel.frontend_schema ? 'Loadable' : 'Backend Only'}
+                                                    <span className={`text-xs ml-auto flex items-center gap-1 ${channel.frontend_schema ? 'text-[var(--success)]' : 'text-[var(--foreground-muted)]'}`}>
+                                                        {channel.frontend_schema ? (
+                                                            'Loadable'
+                                                        ) : (
+                                                            <>
+                                                                <Eye size={12} />
+                                                                Backend Only
+                                                            </>
+                                                        )}
                                                     </span>
                                                 </div>
                                             ))}
@@ -304,3 +372,4 @@ export default function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         </div>
     );
 }
+
