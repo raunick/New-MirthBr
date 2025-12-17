@@ -31,6 +31,11 @@ Uma **engine de integração para saúde** de alta performance (alternativa ao M
 - **Canais Concorrentes**: Execute múltiplos canais de integração simultaneamente.
 - **Baixa Latência**: Processamento de mensagens em sub-milissegundos.
 
+### Segurança e Confiabilidade
+- **Sandboxing Lua**: Execução segura de scripts isolados do sistema operacional.
+- **Autenticação Robusta**: Proteção contra força bruta, rate limiting e hashing seguro de senhas.
+- **API Segura**: Validação estrita de headers e CORS restritivo.
+
 ---
 
 ## 📦 Tipos de Nós Disponíveis
@@ -59,6 +64,22 @@ Uma **engine de integração para saúde** de alta performance (alternativa ao M
 | **HTTP Sender** | Envia requisições HTTP | URL, Method |
 | **Database Writer** | Insere/Atualiza banco de dados | Table, Mode, Query |
 | **TCP Sender** | Envia via socket TCP | Host, Port |
+
+---
+
+## 🔒 Segurança e Arquitetura
+
+O MirthBR foi atualizado com foco em **Security by Design** e modernização arquitetural:
+
+### Melhorias de Segurança
+- **Ambiente Lua Seguro (Sandboxed)**: Scripts de usuário rodam em ambiente isolado, prevenindo acesso não autorizado a arquivos ou rede fora do escopo permitido.
+- **Autenticação Completa**: Fluxo de login com gestão de sessão segura, *hashing* de senhas com sal e políticas de complexidade.
+- **Proteção de API**: Implementação de *Rate Limiting*, sanitização de logs/inputs e headers de segurança HTTP (OWASP recommendations).
+
+### Evolução Arquitetural
+- **Estado Global com Zustand**: O Frontend agora utiliza **Zustand** para gerenciamento de estado, garantindo maior performance e previsibilidade na manipulação de fluxos complexos.
+- **Test Node Avançado**: Nova ferramenta de teste que permite tanto injetar mensagens diretamente no pipeline interno quanto realizar requisições HTTP externas para validar endpoints reais.
+- **Viewer de Canais Backend**: Interface dedicada para inspeção de canais "Backend-Only" (definidos via código/configuração estática).
 
 ---
 
