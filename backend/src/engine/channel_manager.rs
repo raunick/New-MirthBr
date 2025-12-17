@@ -1,14 +1,18 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use tokio::sync::mpsc;
+use tokio::sync::{broadcast, mpsc};
 use uuid::Uuid;
 use crate::storage::models::{Channel, SourceConfig, ProcessorType};
 use crate::engine::listeners::http::HttpListener;
 use crate::engine::listeners::tcp::TcpListener;
+use crate::engine::listeners::database::DatabasePoller;
+use crate::engine::listeners::file::FileReader;
 use crate::engine::processors::lua::LuaProcessor;
 use crate::engine::destinations::http::HttpSender;
 use crate::engine::destinations::file::FileWriter;
+use crate::engine::destinations::tcp::TcpSender;
+use crate::engine::destinations::database::DatabaseWriter;
 use crate::engine::message::Message;
 use std::future::Future;
 use std::pin::Pin;
@@ -21,22 +25,31 @@ use chrono::Utc;
 pub struct ChannelManager {
     channels: Arc<Mutex<HashMap<Uuid, tokio::task::JoinHandle<()>>>>,
     senders: Arc<Mutex<HashMap<Uuid, mpsc::Sender<Message>>>>,
+    shutdown_tx: broadcast::Sender<()>,
+    metrics_tx: broadcast::Sender<crate::storage::models::MetricUpdate>,
 
     logs: Arc<Mutex<VecDeque<LogEntry>>>,
     db: Option<crate::storage::db::Database>,
     message_store: Option<MessageStore>,
+    dedup_store: Option<Arc<crate::storage::deduplication::DeduplicationStore>>,
 }
 
 impl ChannelManager {
-    pub fn new(db: Option<crate::storage::db::Database>) -> Self {
+    pub fn new(db: Option<crate::storage::db::Database>, logs: Arc<Mutex<VecDeque<LogEntry>>>) -> Self {
         let message_store = db.as_ref().map(|d| MessageStore::new(d.pool.clone()));
+        let dedup_store = db.as_ref().map(|d| Arc::new(crate::storage::deduplication::DeduplicationStore::new(d.pool.clone())));
+        let (shutdown_tx, _) = broadcast::channel(1);
+        let (metrics_tx, _) = broadcast::channel(100);
         
         Self {
             channels: Arc::new(Mutex::new(HashMap::new())),
             senders: Arc::new(Mutex::new(HashMap::new())),
-            logs: Arc::new(Mutex::new(VecDeque::with_capacity(100))),
+            shutdown_tx,
+            metrics_tx,
+            logs,
             db,
             message_store,
+            dedup_store,
         }
     }
 
@@ -53,6 +66,14 @@ impl ChannelManager {
             });
         }
     }
+    
+    pub fn subscribe_metrics(&self) -> broadcast::Receiver<crate::storage::models::MetricUpdate> {
+        self.metrics_tx.subscribe()
+    }
+
+    pub fn get_dedup_store(&self) -> Option<Arc<crate::storage::deduplication::DeduplicationStore>> {
+        self.dedup_store.clone()
+    }
 
     pub fn get_logs(&self) -> Vec<LogEntry> {
         if let Ok(logs) = self.logs.lock() {
@@ -60,6 +81,10 @@ impl ChannelManager {
         } else {
             vec![]
         }
+    }
+
+    pub fn get_senders(&self) -> Arc<Mutex<HashMap<Uuid, mpsc::Sender<Message>>>> {
+        self.senders.clone()
     }
 
     pub async fn start_channel(&self, channel: Channel, frontend_schema: Option<serde_json::Value>) -> anyhow::Result<()> {
@@ -100,11 +125,17 @@ impl ChannelManager {
         // 2. Start Source Listener (Create Future)
         // We will run this concurrent with the processor
         let listener_fut: Pin<Box<dyn Future<Output = ()> + Send>> = match channel.source {
-            SourceConfig::Http { port, path } => {
+            SourceConfig::Http { port, path, cert_path, key_path } => {
                 let mut path = path.unwrap_or_else(|| "/".to_string());
                 if !path.starts_with('/') {
                     path = format!("/{}", path);
                 }
+                
+                let tls_config = if let (Some(cert), Some(key)) = (cert_path, key_path) {
+                    Some(crate::config::TlsConfig::new(std::path::PathBuf::from(cert), std::path::PathBuf::from(key)))
+                } else {
+                    None
+                };
                 
                 let listener = HttpListener::new(
                     port,
@@ -112,6 +143,7 @@ impl ChannelManager {
                     channel_id,
                     tx.clone(),
                     store_for_listener,
+                    tls_config,
                 );
                 
                 Box::pin(async move {
@@ -123,12 +155,19 @@ impl ChannelManager {
                 self.add_log("INFO", format!("Test Channel {} ready for manual injection (Format: {})", channel.name, payload_type), Some(channel_id));
                 Box::pin(std::future::pending())
             },
-            SourceConfig::Tcp { port } => {
+            SourceConfig::Tcp { port, cert_path, key_path } => {
+                let tls_config = if let (Some(cert), Some(key)) = (cert_path, key_path) {
+                    Some(crate::config::TlsConfig::new(std::path::PathBuf::from(cert), std::path::PathBuf::from(key)))
+                } else {
+                    None
+                };
+
                 let listener = TcpListener::new(
                     port,
                     channel_id,
                     tx, 
                     store_for_listener,
+                    tls_config,
                 );
                 let channel_name_clone = channel.name.clone();
                 let logs_arc_clone = self.logs.clone();
@@ -151,10 +190,42 @@ impl ChannelManager {
                     }
                 })
             },
-            _ => {
-                tracing::warn!("Unsupported source type");
-                Box::pin(std::future::pending())
+            SourceConfig::Database { url, query, interval_ms } => {
+                let poller = DatabasePoller::new(
+                    url,
+                    query,
+                    interval_ms,
+                    channel_id,
+                    tx,
+                    store_for_listener,
+                );
+                
+                self.add_log("INFO", format!("Channel {} started Database Poller", channel.name), Some(channel_id));
+
+                Box::pin(async move {
+                    if let Err(e) = poller.run().await {
+                         tracing::error!("Database Poller failed: {}", e);
+                    }
+                })
             },
+            SourceConfig::File { path, pattern } => {
+                 let reader = FileReader::new(
+                     path,
+                     pattern,
+                     channel_id,
+                     tx,
+                     store_for_listener,
+                 );
+                 
+                 self.add_log("INFO", format!("Channel {} started File Reader", channel.name), Some(channel_id));
+
+                 Box::pin(async move {
+                     if let Err(e) = reader.run().await {
+                          tracing::error!("File Reader failed: {}", e);
+                     }
+                 })
+            },
+
         };
 
         // 3. Spawn Processing Loop
@@ -162,25 +233,70 @@ impl ChannelManager {
         let destinations = channel.destinations.clone();
         let logs_arc = self.logs.clone(); // Clone ARC for task
         let channel_name = channel.name.clone(); // Clone for async task
+        let metrics_tx = self.metrics_tx.clone();
         let store_for_processor = self.message_store.clone();
+        let dedup_store_for_processor = self.dedup_store.clone();
 
         // 3. Spawn Supervisor Task (runs both listener and processor)
+        let mut shutdown_rx = self.shutdown_tx.subscribe();
+        
         // Note: rx is moved into the processor block
+        let processor_channel_name = channel_name.clone();
+        
+        // 3. Spawn Supervisor Task (runs both listener and processor)
         let handle = tokio::spawn(async move {
             let processor_fut = async move {
-                 tracing::info!("Channel {} ({}) processing task started", channel_name, channel_id);
+                 tracing::info!("Channel {} ({}) processing task started", processor_channel_name, channel_id);
                  while let Some(mut msg) = rx.recv().await {
+                // Use processor_channel_name inside
                 let start_time = Instant::now();
                 let origin = msg.origin.as_deref().unwrap_or("unknown");
                 let msg_id_str = msg.id.to_string();
+                
+                // DEDUPLICATION CHECK
+                if let Some(dedup) = &dedup_store_for_processor {
+                    match dedup.is_duplicate(&channel_id.to_string(), &msg.content).await {
+                        Ok(true) => {
+                            tracing::info!(channel = %processor_channel_name, message_id = %msg.id, "Message is duplicate, skipping");
+                            // Update status to DUPLICATE
+                            if let Some(store) = &store_for_processor {
+                                let _ = store.update_status(&msg_id_str, MessageStatus::FILTERED, Some("Duplicate message".to_string())).await;
+                            }
+                            // Send response
+                            if let Some(tx_arc) = &msg.response_tx {
+                                if let Ok(mut tx_opt) = tx_arc.lock() {
+                                    if let Some(tx) = tx_opt.take() {
+                                        let _ = tx.send(Ok("Duplicate message skipped".to_string()));
+                                    }
+                                }
+                            }
+                            continue; // Skip processing
+                        }
+                        Ok(false) => {
+                            // Not duplicate, mark as processed
+                            let _ = dedup.mark_processed(&channel_id.to_string(), &msg.content).await;
+                        }
+                        Err(e) => {
+                            tracing::warn!("Deduplication check failed: {}, proceeding anyway", e);
+                        }
+                    }
+                }
                 
                 // UPDATE DB: PROCESSING
                 if let Some(store) = &store_for_processor {
                     let _ = store.update_status(&msg_id_str, MessageStatus::PROCESSING, None).await;
                 }
                 
+                // Broadcast PROCESSING
+                let _ = metrics_tx.send(crate::storage::models::MetricUpdate {
+                    channel_id: channel_id.to_string(),
+                    message_id: Some(msg.id.to_string()),
+                    status: "PROCESSING".to_string(),
+                    timestamp: Utc::now(),
+                });
+                
                 tracing::info!(
-                    channel = %channel_name,
+                    channel = %processor_channel_name,
                     message_id = %msg.id,
                     origin = %origin,
                     "Processing message"
@@ -192,7 +308,7 @@ impl ChannelManager {
                        logs.push_back(LogEntry {
                            timestamp: Utc::now(),
                            level: "INFO".to_string(),
-                           message: format!("[Channel: {}] Processing message {} (Origin: {})", channel_name, msg.id, origin),
+                           message: format!("[Channel: {}] Processing message {} (Origin: {})", processor_channel_name, msg.id, origin),
                            channel_id: Some(channel_id),
                        });
                    }
@@ -224,8 +340,103 @@ impl ChannelManager {
                                         }
                                     }
 
+                                    // SEND ERROR RESPONSE
+                                    if let Some(tx_arc) = &msg.response_tx {
+                                        if let Ok(mut tx_opt) = tx_arc.lock() {
+                                            if let Some(tx) = tx_opt.take() {
+                                                let _ = tx.send(Err(error_msg.clone()));
+                                            }
+                                        }
+                                    }
+
                                     failed = true;
                                     break; 
+                                }
+                            }
+                        },
+                        ProcessorType::Mapper { mappings } => {
+                             let processor = crate::engine::processors::mapper::MapperProcessor::new(mappings.clone());
+                             match processor.process(msg.clone()) {
+                                 Ok(new_msg) => {
+                                     msg = new_msg;
+                                     tracing::info!("Mapper processor executed successfully");
+                                 },
+                                 Err(e) => {
+                                     tracing::error!("Mapper Processor failed: {}", e);
+                                     error_msg = format!("Mapper Processor failed: {}", e);
+                                     failed = true;
+                                     break;
+                                 }
+                             }
+                        },
+                        ProcessorType::Filter { condition } => {
+                            let processor = crate::engine::processors::filter::FilterProcessor::new(condition.clone());
+                            match processor.process(msg.clone()) {
+                                Ok(true) => {
+                                    tracing::info!("Filter passed: message allowed");
+                                },
+                                Ok(false) => {
+                                    tracing::info!("Filter matched: message dropped");
+                                    // Handle drop:
+                                    // We mark as FILTERED and break the loop so destinations are NOT reached.
+                                    // We use a flag 'filtered' instead of 'failed' to avoid error logging/DLQ.
+                                    // Actually, we can just continue to next processor? No, filter usually stops processing.
+                                    // We need to stop the loop and stop destinations.
+                                    // Let's rely on 'failed = true' but clear 'error_msg' or use a separate 'dropped' flag.
+                                    
+                                    // UPDATE DB: FILTERED
+                                    if let Some(store) = &store_for_processor {
+                                        let _ = store.update_status(&msg_id_str, MessageStatus::FILTERED, None).await;
+                                    }
+                                    
+                                    // Log
+                                    {
+                                       if let Ok(mut logs) = logs_arc.lock() {
+                                           if logs.len() >= 100 { logs.pop_front(); }
+                                           logs.push_back(LogEntry {
+                                               timestamp: Utc::now(),
+                                               level: "INFO".to_string(),
+                                               message: format!("[Channel: {}] Message {} FILTERED/DROPPED", processor_channel_name, msg.id),
+                                               channel_id: Some(channel_id),
+                                           });
+                                       }
+                                    }
+                                    
+                                    // Send Response (Optional, maybe "Filtered"?)
+                                    if let Some(tx_arc) = &msg.response_tx {
+                                        if let Ok(mut tx_opt) = tx_arc.lock() {
+                                            if let Some(tx) = tx_opt.take() {
+                                                let _ = tx.send(Ok("Message Filtered".to_string()));
+                                            }
+                                        }
+                                    }
+                                    
+                                    // Skip destinations and other processors
+                                    // We need a way to break the outer loop (destinations) too.
+                                    // Or just set 'failed = true' but distinction is important.
+                                    // Let's modify the flow to check a 'dropped' flag.
+                                    // Since I can't easily change the locals outside this match without refactoring,
+                                    // I'll set 'failed = true' but make error_msg empty so I know? No that's hacky.
+                                    // Better: break the loop, and outside check.
+                                    // But 'failed' triggers DLQ.
+                                    // I need to add a 'filtered' flag.
+                                    // Since I can't add a variable easily to the scope (replace_file) without replacing the whole block...
+                                    // Wait, I am replacing the match block. I can't obscure outer variables unless I replace the wrapper.
+                                    // The wrapper is `for proc_config in &processors`.
+                                    // I can replace the whole loop? That's big.
+                                    // Or I can return/break with a specific error message that I check later?
+                                    // "FILTERED" string in error_msg?
+                                    // If error_msg == "FILTERED", don't DLQ.
+                                    
+                                    error_msg = "FILTERED".to_string();
+                                    failed = true; 
+                                    break;
+                                },
+                                Err(e) => {
+                                    tracing::error!("Filter Processor Error: {}", e);
+                                    error_msg = format!("Filter Processor Error: {}", e);
+                                    failed = true;
+                                    break;
                                 }
                             }
                         },
@@ -284,48 +495,67 @@ impl ChannelManager {
                 }
 
                 if failed {
-                    let elapsed = start_time.elapsed();
-                    tracing::warn!(
-                        channel = %channel_name,
-                        message_id = %msg.id,
-                        processing_time_ms = elapsed.as_millis(),
-                        "Message processing failed"
-                    );
-                    
-                    // UPDATE DB: ERROR
-                    if let Some(store) = &store_for_processor {
-                        let _ = store.update_status(&msg_id_str, MessageStatus::ERROR, Some(error_msg)).await;
-                    }
-                    
-                    // ROUTE TO ERROR DESTINATION (DLQ)
-                    if let Some(err_dest) = &channel.error_destination {
-                        tracing::info!("Routing failed message to Error Destination: {}", err_dest.name);
-                        match &err_dest.kind {
-                            crate::storage::models::DestinationType::File { path, filename } => {
-                                let writer = FileWriter::new(path.clone(), filename.clone(), channel_name.clone());
-                                if let Err(e) = writer.send(&msg).await {
-                                    tracing::error!("Error Destination (File) failed: {}", e);
-                                    // Log critical error
-                                    {
-                                        if let Ok(mut logs) = logs_arc.lock() {
-                                            if logs.len() >= 100 { logs.pop_front(); }
-                                            logs.push_back(LogEntry {
-                                                timestamp: Utc::now(),
-                                                level: "CRITICAL".to_string(),
-                                                message: format!("[Channel: {}] DLQ File failed: {}", channel_name, e),
-                                                channel_id: Some(channel_id),
-                                            });
+                    if error_msg == "FILTERED" {
+                         tracing::info!("Message filtered. Skipping remaining processing and destinations.");
+                         // Already updated DB status to FILTERED in the processor match arm.
+                    } else {
+                        let elapsed = start_time.elapsed();
+                        tracing::warn!(
+                            channel = %processor_channel_name,
+                            message_id = %msg.id,
+                            processing_time_ms = elapsed.as_millis(),
+                            "Message processing failed"
+                        );
+                        
+                        // UPDATE DB: ERROR
+                        if let Some(store) = &store_for_processor {
+                            let _ = store.update_status(&msg_id_str, MessageStatus::ERROR, Some(error_msg.clone())).await;
+                        }
+                        
+                         // Broadcast ERROR
+                        let _ = metrics_tx.send(crate::storage::models::MetricUpdate {
+                            channel_id: channel_id.to_string(),
+                            message_id: Some(msg.id.to_string()),
+                            status: "ERROR".to_string(),
+                            timestamp: Utc::now(),
+                        });
+                        
+                        // ROUTE TO ERROR DESTINATION (DLQ)
+                        if let Some(err_dest) = &channel.error_destination {
+                            tracing::info!("Routing failed message to Error Destination: {}", err_dest.name);
+                            match &err_dest.kind {
+                                crate::storage::models::DestinationType::File { path, filename, append, encoding } => {
+                                    let writer = FileWriter::new(
+                                        path.clone(), 
+                                        filename.clone(), 
+                                        append.clone(), 
+                                        encoding.clone(), 
+                                        processor_channel_name.clone()
+                                    );
+                                    if let Err(e) = writer.send(&msg).await {
+                                        tracing::error!("Error Destination (File) failed: {}", e);
+                                        // Log critical error ...
+                                        {
+                                            if let Ok(mut logs) = logs_arc.lock() {
+                                                if logs.len() >= 100 { logs.pop_front(); }
+                                                logs.push_back(LogEntry {
+                                                    timestamp: Utc::now(),
+                                                    level: "CRITICAL".to_string(),
+                                                    message: format!("[Channel: {}] DLQ File failed: {}", processor_channel_name, e),
+                                                    channel_id: Some(channel_id),
+                                                });
+                                            }
                                         }
                                     }
-                                }
-                            },
-                            crate::storage::models::DestinationType::Http { url, method } => {
-                                 let sender = HttpSender::new(url.clone(), method.clone(), channel_name.clone());
-                                 if let Err(e) = sender.send(&msg).await {
-                                    tracing::error!("Error Destination (HTTP) failed: {}", e);
-                                 }
-                            },
-                             _ => tracing::warn!("Error Destination type not supported yet"),
+                                },
+                                crate::storage::models::DestinationType::Http { url, method } => {
+                                    let sender = HttpSender::new(url.clone(), method.clone(), processor_channel_name.clone());
+                                    if let Err(e) = sender.send(&msg).await {
+                                        tracing::error!("Error Destination (HTTP) failed: {}", e);
+                                    }
+                                },
+                                _ => tracing::warn!("Error Destination type not supported yet"),
+                            }
                         }
                     }
 
@@ -335,22 +565,107 @@ impl ChannelManager {
                 // B. Send to Destinations (Parallel-ish or Sequential)
                 for dest_config in &destinations {
                     match &dest_config.kind {
-                        crate::storage::models::DestinationType::File { path, filename } => {
-                            let writer = FileWriter::new(path.clone(), filename.clone(), channel_name.clone());
+                        crate::storage::models::DestinationType::File { path, filename, append, encoding } => {
+                            let writer = FileWriter::new(
+                                path.clone(), 
+                                filename.clone(), 
+                                append.clone(), 
+                                encoding.clone(), 
+                                processor_channel_name.clone()
+                            );
                             if let Err(e) = writer.send(&msg).await {
                                 tracing::error!("Destination File failed: {}", e);
-                                // Log Error ... (omitted similar log block)
+                                // Log Error
+                                if let Ok(mut logs) = logs_arc.lock() {
+                                    if logs.len() >= 100 { logs.pop_front(); }
+                                    logs.push_back(LogEntry {
+                                        timestamp: Utc::now(),
+                                        level: "ERROR".to_string(),
+                                        message: format!("[Channel: {}] File Destination failed: {}", processor_channel_name, e),
+                                        channel_id: Some(channel_id),
+                                    });
+                                }
                             } else {
-                                // Log Success ...
+                                // Log Success
+                                if let Ok(mut logs) = logs_arc.lock() {
+                                    if logs.len() >= 100 { logs.pop_front(); }
+                                    logs.push_back(LogEntry {
+                                        timestamp: Utc::now(),
+                                        level: "INFO".to_string(),
+                                        message: format!("[Channel: {}] File written successfully", processor_channel_name),
+                                        channel_id: Some(channel_id),
+                                    });
+                                }
                             }
                         },
                         crate::storage::models::DestinationType::Http { url, method } => {
-                             let sender = HttpSender::new(url.clone(), method.clone(), channel_name.clone());
+                             let sender = HttpSender::new(url.clone(), method.clone(), processor_channel_name.clone());
                              if let Err(e) = sender.send(&msg).await {
                                 tracing::error!("Destination HTTP failed: {}", e);
                              }
                         },
-                        _ => tracing::warn!("Destination type not implemented yet"),
+                        crate::storage::models::DestinationType::Tcp { host, port } => {
+                             let sender = TcpSender::new(host.clone(), *port, processor_channel_name.clone());
+                             if let Err(e) = sender.send(&msg).await {
+                                tracing::error!("Destination TCP failed: {}", e);
+                                // Log Error
+                                if let Ok(mut logs) = logs_arc.lock() {
+                                    if logs.len() >= 100 { logs.pop_front(); }
+                                    logs.push_back(LogEntry {
+                                        timestamp: Utc::now(),
+                                        level: "ERROR".to_string(),
+                                        message: format!("[Channel: {}] TCP Destination failed: {}", processor_channel_name, e),
+                                        channel_id: Some(channel_id),
+                                    });
+                                }
+                             }
+                        },
+                        crate::storage::models::DestinationType::Lua { code } => {
+                            let destination = crate::engine::destinations::lua::LuaDestination::new(code.clone());
+                            if let Err(e) = destination.send(&msg) { 
+                                 tracing::error!("Destination Lua Script failed: {}", e);
+                                // Log Error
+                                {
+                                    if let Ok(mut logs) = logs_arc.lock() {
+                                        if logs.len() >= 100 { logs.pop_front(); }
+                                        logs.push_back(LogEntry {
+                                            timestamp: Utc::now(),
+                                            level: "ERROR".to_string(),
+                                            message: format!("[Channel: {}] Destination Lua failed: {}", processor_channel_name, e),
+                                            channel_id: Some(channel_id),
+                                        });
+                                    }
+                                }
+                            } else {
+                                // Lua execution successful
+                            }
+                        },
+                        crate::storage::models::DestinationType::Database { url, table, mode, query } => {
+                             let writer = DatabaseWriter::new(
+                                 url.clone(),
+                                 table.clone(),
+                                 mode.clone(),
+                                 query.clone(),
+                                 processor_channel_name.clone(),
+                             );
+                             
+                             if let Err(e) = writer.send(&msg).await {
+                                 tracing::error!("Destination Database failed: {}", e);
+                                 // Log Error
+                                 if let Ok(mut logs) = logs_arc.lock() {
+                                     if logs.len() >= 100 { logs.pop_front(); }
+                                     logs.push_back(LogEntry {
+                                         timestamp: Utc::now(),
+                                         level: "ERROR".to_string(),
+                                         message: format!("[Channel: {}] Database Destination failed: {}", processor_channel_name, e),
+                                         channel_id: Some(channel_id),
+                                     });
+                                 }
+                             } else {
+                                 tracing::info!("Database write successful");
+                             }
+                        },
+
                     }
                 }
                 
@@ -358,22 +673,65 @@ impl ChannelManager {
                 if let Some(store) = &store_for_processor {
                     let _ = store.update_status(&msg_id_str, MessageStatus::SENT, None).await;
                 }
+                
+                // Broadcast SENT
+                let _ = metrics_tx.send(crate::storage::models::MetricUpdate {
+                    channel_id: channel_id.to_string(),
+                    message_id: Some(msg.id.to_string()),
+                    status: "SENT".to_string(),
+                    timestamp: Utc::now(),
+                });
 
                 // Log processing complete with timing
                 let elapsed = start_time.elapsed();
                 tracing::info!(
-                    channel = %channel_name,
+                    channel = %processor_channel_name,
                     message_id = %msg.id,
                     processing_time_ms = elapsed.as_millis(),
                     "Message processed"
                 );
+                if !failed {
+                    // SEND SUCCESS RESPONSE
+                    if let Some(tx_arc) = &msg.response_tx {
+                        if let Ok(mut tx_opt) = tx_arc.lock() {
+                            if let Some(tx) = tx_opt.take() {
+                                let _ = tx.send(Ok("Processed".to_string()));
+                            }
+                        }
+                    }
+                }
             }
         }; // End processor_fut
 
-        // Run both futures concurrently. If the supervisor task is aborted, both futures are dropped.
+        // Spawn independent tasks managed by this supervisor
+        let mut listener_handle = tokio::spawn(listener_fut);
+        let mut processor_handle = tokio::spawn(processor_fut);
+
         tokio::select! {
-            _ = listener_fut => { tracing::error!("Listener exited unexpectedly"); },
-            _ = processor_fut => { tracing::info!("Processor exited"); }
+            _ = shutdown_rx.recv() => {
+                tracing::info!("Channel {} shutting down (signal received)...", channel_name);
+                // 1. Abort listener (stops accepting new connections)
+                listener_handle.abort();
+                
+                // 2. Wait for processor to drain
+                match processor_handle.await {
+                    Ok(_) => tracing::info!("Channel {} processor drained.", channel_name),
+                    Err(e) => tracing::warn!("Channel {} processor join error: {}", channel_name, e),
+                }
+            },
+            res = &mut listener_handle => {
+                match res {
+                   Ok(_) => tracing::warn!("Channel {} listener exited unexpectedly", channel_name),
+                   Err(e) => tracing::error!("Channel {} listener task failed: {}", channel_name, e),
+                }
+            },
+            res = &mut processor_handle => {
+                 match res {
+                    Ok(_) => tracing::info!("Channel {} processor exited", channel_name),
+                    Err(e) => tracing::error!("Channel {} processor task failed: {}", channel_name, e),
+                 }
+                 listener_handle.abort();
+            }
         }
     });
 
@@ -495,6 +853,35 @@ impl ChannelManager {
         } else {
             Err(anyhow::anyhow!("Message store not configured"))
         }
+    }
+
+    pub async fn shutdown_all(&self) {
+        tracing::info!("Initiating system shutdown...");
+        // 1. Send shutdown signal to all supervisors
+        let _ = self.shutdown_tx.send(());
+        
+        // 2. Clear senders map to ensure processors stop when their listeners abort
+        {
+            let mut senders = self.senders.lock().unwrap();
+            senders.clear();
+        }
+        
+        // 3. Join all channel tasks
+        let mut handles = Vec::new();
+        {
+            let mut channels = self.channels.lock().unwrap();
+            // Move handles out of the map
+            handles.extend(channels.drain());
+        }
+        
+        for (id, handle) in handles {
+            tracing::info!("Waiting for channel {} to shutdown...", id);
+            if let Err(e) = handle.await {
+                tracing::error!("Error joining channel {}: {}", id, e);
+            }
+        }
+        
+        tracing::info!("All channels shutdown gracefully.");
     }
 }
 

@@ -9,10 +9,11 @@ interface HeaderProps {
     isConnected?: boolean;
     lastDeployStatus?: 'success' | 'error' | 'idle';
     onToggleLogs?: () => void;
+    onToggleMetrics?: () => void;
     onTestChannel?: () => void;
 }
 
-export default function Header({ isConnected: initialConnected = false, lastDeployStatus = 'idle', onToggleLogs, onTestChannel }: HeaderProps) {
+export default function Header({ isConnected: initialConnected = false, lastDeployStatus = 'idle', onToggleLogs, onToggleMetrics, onTestChannel }: HeaderProps) {
     const [isConnected, setIsConnected] = useState(initialConnected);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const { username, logout } = useAuthStore();
@@ -70,6 +71,14 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
                         >
                             <Activity size={14} />
                             View Logs
+                        </button>
+
+                        <button
+                            onClick={onToggleMetrics}
+                            className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[var(--glass-bg)] transition-colors text-xs font-medium text-[var(--foreground-muted)] hover:text-[var(--foreground)] border border-transparent hover:border-[var(--glass-border)]"
+                        >
+                            <Activity size={14} className="text-[var(--primary)]" />
+                            Metrics
                         </button>
 
                         <Link href="/messages" className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[var(--glass-bg)] transition-colors text-xs font-medium text-[var(--foreground-muted)] hover:text-[var(--foreground)] border border-transparent hover:border-[var(--glass-border)]">

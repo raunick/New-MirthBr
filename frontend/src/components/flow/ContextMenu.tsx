@@ -176,6 +176,13 @@ const ContextMenu = ({
                     <Layers size={14} className="text-[var(--node-destination)]" />
                     File Writer
                 </button>
+                <button
+                    onClick={() => handleAction(() => onAddNode?.('luaDestination'))}
+                    className="w-full px-3 py-2 flex items-center gap-3 text-sm text-[var(--foreground)] hover:bg-[var(--node-destination)]/10 rounded-md transition-colors"
+                >
+                    <Layers size={14} className="text-[var(--node-destination)]" />
+                    Lua Destination
+                </button>
                 <div className="my-1 border-t border-[var(--glass-border)]" />
                 <button
                     onClick={() => handleAction(() => onPaste?.())}

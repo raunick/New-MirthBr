@@ -24,19 +24,33 @@ pub struct Channel {
     pub destinations: Vec<DestinationConfig>,
     #[serde(default)]
     pub error_destination: Option<DestinationConfig>,
+    #[serde(default = "default_max_retries")]
+    pub max_retries: Option<i32>,
+}
+
+fn default_max_retries() -> Option<i32> {
+    Some(3)
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MetricUpdate {
+    pub channel_id: String,
+    pub message_id: Option<String>,
+    pub status: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 #[serde(tag = "type", content = "config")]
 pub enum SourceConfig {
     #[serde(rename = "http_listener")]
-    Http { port: u16, path: Option<String> },
+    Http { port: u16, path: Option<String>, cert_path: Option<String>, key_path: Option<String> },
     #[serde(rename = "tcp_listener")]
-    Tcp { port: u16 },
+    Tcp { port: u16, cert_path: Option<String>, key_path: Option<String> },
     #[serde(rename = "file_reader")]
     File { path: String, pattern: Option<String> },
     #[serde(rename = "database_poller")]
-    Database { query: String, interval: u64 },
+    Database { url: String, query: String, interval_ms: u64 },
     #[serde(rename = "test_source")]
     Test { payload_type: String, payload: String },
 }
@@ -78,11 +92,13 @@ pub enum DestinationType {
     #[serde(rename = "http_sender")]
     Http { url: String, method: String },
     #[serde(rename = "file_writer")]
-    File { path: String, filename: Option<String> },
+    File { path: String, filename: Option<String>, append: Option<bool>, encoding: Option<String> },
     #[serde(rename = "database_writer")]
-    Database { table: Option<String>, mode: String, query: Option<String> },
+    Database { url: String, table: Option<String>, mode: String, query: Option<String> },
     #[serde(rename = "tcp_sender")]
     Tcp { host: String, port: u16 },
+    #[serde(rename = "lua_script")]
+    Lua { code: String },
 }
 
 

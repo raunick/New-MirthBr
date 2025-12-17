@@ -31,6 +31,7 @@ import FileWriterNode from './nodes/FileWriterNode';
 import HTTPSenderNode from './nodes/HTTPSenderNode';
 import DatabaseWriterNode from './nodes/DatabaseWriterNode';
 import TCPSenderNode from './nodes/TCPSenderNode';
+import LuaDestinationNode from './nodes/LuaDestinationNode';
 
 // Special Nodes
 import TestNode from './nodes/TestNode';
@@ -74,6 +75,7 @@ const nodeTypes = {
     httpSender: HTTPSenderNode,
     databaseWriter: DatabaseWriterNode,
     tcpSender: TCPSenderNode,
+    luaDestination: LuaDestinationNode,
     // Special
     testNode: TestNode,
     // Utility Nodes
@@ -316,7 +318,7 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
                 modified = true;
             }
 
-            if (['luaScript', 'filter', 'databasePoller', 'databaseWriter'].includes(node.type || '')) {
+            if (['luaScript', 'filter', 'databasePoller', 'databaseWriter', 'luaDestination'].includes(node.type || '')) {
                 if (!data.onEdit) {
                     newData.onEdit = (code: string) => handleEditCode(node.id, code);
                     modified = true;

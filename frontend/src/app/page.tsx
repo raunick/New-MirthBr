@@ -6,6 +6,7 @@ import FlowCanvas from "@/components/flow/FlowCanvas";
 import { useState, useCallback, useEffect } from "react";
 import { ReactFlowProvider } from "reactflow";
 import LogViewer from "@/components/dashboard/LogViewer";
+import MetricsDashboard from "@/components/dashboard/MetricsDashboard";
 import MessageInjectorModal from "@/components/tools/MessageInjectorModal";
 import LoginPage from "@/components/auth/LoginPage";
 import AuthProvider from "@/components/auth/AuthProvider";
@@ -16,6 +17,8 @@ function MainApp() {
   const [lastDeployStatus, setLastDeployStatus] = useState<'success' | 'error' | 'idle'>('idle');
   const [isLogsOpen, setIsLogsOpen] = useState(false);
   const [isInjectorOpen, setIsInjectorOpen] = useState(false);
+
+  const [isMetricsOpen, setIsMetricsOpen] = useState(false);
 
   const handleDeploySuccess = useCallback(() => {
     setLastDeployStatus('success');
@@ -34,6 +37,7 @@ function MainApp() {
           isConnected={isConnected}
           lastDeployStatus={lastDeployStatus}
           onToggleLogs={() => setIsLogsOpen(!isLogsOpen)}
+          onToggleMetrics={() => setIsMetricsOpen(!isMetricsOpen)}
           onTestChannel={() => setIsInjectorOpen(true)}
         />
 
@@ -46,6 +50,7 @@ function MainApp() {
               onDeployError={handleDeployError}
             />
             <LogViewer isOpen={isLogsOpen} onClose={() => setIsLogsOpen(false)} />
+            <MetricsDashboard isOpen={isMetricsOpen} onClose={() => setIsMetricsOpen(false)} />
             <MessageInjectorModal isOpen={isInjectorOpen} onClose={() => setIsInjectorOpen(false)} />
           </main>
         </div>

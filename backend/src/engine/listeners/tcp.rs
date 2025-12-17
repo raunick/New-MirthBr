@@ -4,32 +4,58 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use crate::engine::message::Message;
 use crate::storage::messages::MessageStore;
+use crate::engine::listeners::mllp::{MllpFrameAccumulator, generate_ack};
 use uuid::Uuid;
+use std::time::Duration;
+
+use crate::config::TlsConfig;
+use tokio_rustls::TlsAcceptor;
+use tokio_rustls::rustls::{ServerConfig, pki_types::{CertificateDer, PrivateKeyDer}};
+use std::sync::Arc;
+use std::io::BufReader;
+use std::fs::File;
 
 pub struct TcpListener {
     pub port: u16,
     pub channel_id: Uuid,
     pub sender: mpsc::Sender<Message>,
     pub store: Option<MessageStore>,
+    pub tls_config: Option<TlsConfig>,
 }
 
 impl TcpListener {
-    pub fn new(port: u16, channel_id: Uuid, sender: mpsc::Sender<Message>, store: Option<MessageStore>) -> Self {
+    pub fn new(port: u16, channel_id: Uuid, sender: mpsc::Sender<Message>, store: Option<MessageStore>, tls_config: Option<TlsConfig>) -> Self {
         Self {
             port,
             channel_id,
             sender,
             store,
+            tls_config,
         }
     }
 
     pub async fn run(&self) -> anyhow::Result<()> {
         let port = self.port;
         let channel_id = self.channel_id;
-        let sender = self.sender.clone();
-        let store = self.store.clone();
+        
+        // TLS Setup
+        let tls_acceptor = if let Some(cfg) = &self.tls_config {
+            tracing::info!("🔒 Configuring TLS for Channel {}", channel_id);
+             // Load certs
+            let certs = rustls_pemfile::certs(&mut BufReader::new(File::open(&cfg.cert_path)?))
+                .collect::<Result<Vec<_>, _>>()?;
+            let key = rustls_pemfile::private_key(&mut BufReader::new(File::open(&cfg.key_path)?))?
+                .ok_or_else(|| anyhow::anyhow!("No private key found"))?;
 
-        // Configurable bind address for listeners
+            let config = ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(certs, key)?;
+            
+            Some(TlsAcceptor::from(Arc::new(config)))
+        } else {
+            None
+        };
+
         let bind_addr: std::net::IpAddr = std::env::var("LISTENER_BIND_ADDRESS")
             .unwrap_or_else(|_| "0.0.0.0".to_string())
             .parse()
@@ -44,14 +70,26 @@ impl TcpListener {
         })?;
 
         loop {
-            // Use a timeout or select to allow distinct cancellation points if needed
             match listener.accept().await {
                 Ok((socket, addr)) => {
-                    let sender_clone = sender.clone();
-                    let store_clone = store.clone();
-                    tokio::spawn(async move {
-                        handle_connection(socket, addr, channel_id, sender_clone, store_clone).await;
-                    });
+                    let sender_clone = self.sender.clone();
+                    let store_clone = self.store.clone();
+                    let acceptor = tls_acceptor.clone();
+
+                    if let Some(acceptor) = acceptor {
+                        tokio::spawn(async move {
+                            match acceptor.accept(socket).await {
+                                Ok(stream) => {
+                                    handle_connection(stream, addr, channel_id, sender_clone, store_clone).await;
+                                },
+                                Err(e) => tracing::error!("TLS Handshake failed from {}: {}", addr, e),
+                            }
+                        });
+                    } else {
+                        tokio::spawn(async move {
+                            handle_connection(socket, addr, channel_id, sender_clone, store_clone).await;
+                        });
+                    }
                 }
                 Err(e) => {
                     tracing::error!("Failed to accept TCP connection: {}", e);
@@ -61,93 +99,91 @@ impl TcpListener {
     }
 }
 
-async fn handle_connection(mut socket: TcpStream, addr: SocketAddr, channel_id: Uuid, sender: mpsc::Sender<Message>, store: Option<MessageStore>) {
-    tracing::info!("Accepted TCP connection from {}", addr);
-    let mut buffer = [0u8; 4096]; // Buffer size
+async fn handle_connection<S>(mut socket: S, addr: SocketAddr, channel_id: Uuid, sender: mpsc::Sender<Message>, store: Option<MessageStore>) 
+where S: AsyncReadExt + AsyncWriteExt + Unpin
+{
+    tracing::info!("Accepted connection from {}", addr);
+    let mut buffer = [0u8; 4096];
+    
+    // MLLP Accumulator with 30s timeout logic (checked manually or via read timeout)
+    const TIMEOUT_SECS: u64 = 30;
+    let mut accumulator = MllpFrameAccumulator::new(TIMEOUT_SECS * 1000);
 
     loop {
-        match socket.read(&mut buffer).await {
-            Ok(0) => {
+        // Read with timeout
+        let read_result = tokio::time::timeout(
+            Duration::from_secs(TIMEOUT_SECS),
+            socket.read(&mut buffer)
+        ).await;
+
+        match read_result {
+            Ok(Ok(0)) => {
                 tracing::info!("TCP connection closed by client {}", addr);
                 break;
-            } // Connection closed
-            Ok(n) => {
-                tracing::info!("Received {} bytes from {}", n, addr);
+            }
+            Ok(Ok(n)) => {
                 let data = &buffer[0..n];
-                // Check if MLLP
-                // MLLP: <SB> Content <EB><CR>
-                // SB = 0x0B, EB = 0x1C, CR = 0x0D
+                tracing::debug!("Received {} bytes from {}", n, addr);
                 
-                // For MVP: Simple detection. If starts with 0x0B, treat as MLLP.
-                // If not, treat as raw.
-                // Accumulate logic omitted for brevity, assuming small messages fit in buffer or are sent at once.
+                let messages = accumulator.feed(data);
                 
-                let (content, is_mllp) = if data.starts_with(&[0x0B]) {
-                    // Try to find end
-                    if let Some(end_idx) = data.iter().position(|&b| b == 0x1C) {
-                        let content_bytes = &data[1..end_idx];
-                        (String::from_utf8_lossy(content_bytes).to_string(), true)
+                for content in messages {
+                    let origin = format!("TCP :{} from {}", addr.port(), addr.ip());
+                    tracing::info!("Received complete MLLP message from {}", origin);
+                    
+                    // 2. Persist
+                    let mut persistence_id = Uuid::new_v4().to_string();
+                    let mut persisted = false;
+                    
+                    if let Some(s) = &store {
+                         match s.save_message(&channel_id.to_string(), &content).await {
+                            Ok(id) => {
+                                persistence_id = id;
+                                persisted = true;
+                                tracing::info!("Message persisted to disk with ID: {}", persistence_id);
+                            },
+                            Err(e) => {
+                                tracing::error!("CRITICAL: Failed to persist message: {}", e);
+                            }
+                        }
                     } else {
-                        // Incomplete MLLP frame? Or split packet?
-                        // For MVP: Treat as raw if we can't find end immediately
-                         (String::from_utf8_lossy(data).to_string(), false)
+                        persisted = true; 
                     }
-                } else {
-                     (String::from_utf8_lossy(data).to_string(), false)
-                };
-
-                let origin = format!("TCP :{} from {}", addr.port(), addr.ip());
-                
-                // 1. Persist Message (Critical for Data Safety)
-                let mut msg_id_str = Uuid::new_v4().to_string(); // Default if not using store
-                
-                if let Some(s) = &store {
-                    match s.save_message(&channel_id.to_string(), &content).await {
-                        Ok(id) => {
-                            msg_id_str = id;
-                            tracing::info!("Message persisted to disk with ID: {}", msg_id_str);
-                        },
-                        Err(e) => {
-                             tracing::error!("CRITICAL: Failed to persist message to disk: {}", e);
-                             // If we can't persist, we probably shouldn't ACK success? or send NACK?
-                             // For now, we log and proceed but this is risky.
-                             // Ideally send NACK here.
+                    
+                    if persisted {
+                        // 3. Send ACK
+                        let ack = generate_ack(&content);
+                        if let Err(e) = socket.write_all(ack.as_bytes()).await {
+                            tracing::error!("Failed to send ACK to {}: {}", addr, e);
+                            break; 
+                        } else {
+                            tracing::info!("ACK sent to {}", addr);
+                        }
+                        
+                        // 4. Dispatch to Pipeline
+                        let mut msg = Message::new(channel_id, content, origin);
+                        if let Ok(uuid) = Uuid::parse_str(&persistence_id) {
+                            msg.id = uuid;
+                        }
+                        
+                        if let Err(e) = sender.send(msg).await {
+                             tracing::error!("Failed to send message to pipeline: {}", e);
+                             break;
                         }
                     }
                 }
-                
-                // 2. Send ACK (After Persistence)
-                if is_mllp {
-                    // Extract Message Control ID directly from content if possible
-                    // MSH|^~\&|...|...|...|...|...|...|MSGID|...
-                    let msg_control_id = content.split('|').nth(9).unwrap_or("UNKNOWN_ID");
-                    
-                    let ack = format!("\x0BMSA|AA|{}\x1C\x0D", msg_control_id);
-                    if let Err(e) = socket.write_all(ack.as_bytes()).await {
-                        tracing::error!("Failed to send ACK: {}", e);
-                        // If ACK fails, equipment might resend. That's okay, we have it persisted (dedup ID needed later).
-                        break;
-                    } else {
-                        tracing::info!("ACK sent for HL7 Message ID: {}", msg_control_id);
-                    }
-                }
-
-                // 3. Create Internal Message & Send to Pipeline
-                let mut msg = Message::new(channel_id, content, origin);
-                // Override ID with the one from DB
-                if let Ok(uuid) = Uuid::parse_str(&msg_id_str) {
-                    msg.id = uuid;
-                }
-
-                // Send to processing
-                if let Err(e) = sender.send(msg).await {
-                    tracing::error!("Failed to send message to pipeline: {}", e);
-                    break;
-                }
-            }
-            Err(e) => {
-                tracing::error!("TCP read error: {}", e);
+            },
+            Ok(Err(e)) => {
+                tracing::error!("TCP read error from {}: {}", addr, e);
                 break;
+            },
+            Err(_) => {
+                // Timeout
+                tracing::info!("Connection timeout from {}", addr);
+                if accumulator.check_timeout() {
+                     tracing::warn!("Timeout waiting for MLLP frame completion from {}", addr);
+                }
+                break; 
             }
         }
     }

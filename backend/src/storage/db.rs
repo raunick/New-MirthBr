@@ -59,6 +59,25 @@ impl Database {
             .execute(&self.pool)
             .await?;
 
+        // Create processed_ids table for deduplication
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS processed_ids (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                channel_id TEXT NOT NULL,
+                message_hash TEXT NOT NULL,
+                expires_at DATETIME NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(channel_id, message_hash)
+            )"
+        )
+        .execute(&self.pool)
+        .await?;
+
+        // Index for cleanup
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_processed_ids_expires ON processed_ids(expires_at)")
+            .execute(&self.pool)
+            .await?;
+
         Ok(())
     }
 

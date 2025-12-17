@@ -31,10 +31,11 @@ pub fn register_logging(lua: &Lua) -> Result<()> {
         Ok(())
     })?)?;
 
-    log_table.set("error", lua.create_function(|_, msg: String| {
+    log_table.set("error", lua.create_function(|_, msg: String| -> mlua::Result<()> {
         let safe_msg = sanitize_log_message(&msg);
         error!("[LUA] {}", safe_msg);
-        Ok(())
+        // Throw error to halt execution and propagate to HTTP response
+        Err(mlua::Error::RuntimeError(format!("[LUA] {}", safe_msg)))
     })?)?;
     
     log_table.set("debug", lua.create_function(|_, msg: String| {

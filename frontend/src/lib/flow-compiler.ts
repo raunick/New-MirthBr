@@ -12,8 +12,8 @@ interface BackChannel {
 }
 
 type SourceConfig =
-    | { type: 'http_listener'; config: { port: number; path?: string } }
-    | { type: 'tcp_listener'; config: { port: number } }
+    | { type: 'http_listener'; config: { port: number; path?: string; cert_path?: string; key_path?: string } }
+    | { type: 'tcp_listener'; config: { port: number; cert_path?: string; key_path?: string } }
     | { type: 'file_reader'; config: { path: string; pattern?: string } }
     | { type: 'database_poller'; config: { query: string; interval: number } }
     | { type: 'test_source'; config: { payload_type: string; payload: string } };
@@ -34,15 +34,16 @@ type DestinationConfig = {
     name: string;
 } & (
         | { type: 'http_sender'; config: { url: string; method: string } }
-        | { type: 'file_writer'; config: { path: string; filename?: string } }
+        | { type: 'file_writer'; config: { path: string; filename?: string; append?: boolean; encoding?: string } }
         | { type: 'database_writer'; config: { table?: string; mode: string; query?: string } }
         | { type: 'tcp_sender'; config: { host: string; port: number } }
+        | { type: 'lua_script'; config: { code: string } }
     );
 
 // Node type classification
 const sourceTypes = ['httpListener', 'tcpListener', 'fileReader', 'databasePoller', 'testNode'];
 const processorTypes = ['luaScript', 'mapper', 'filter', 'router', 'hl7Parser'];
-const destinationTypes = ['fileWriter', 'httpSender', 'databaseWriter', 'tcpSender'];
+const destinationTypes = ['fileWriter', 'httpSender', 'databaseWriter', 'tcpSender', 'luaDestination'];
 
 function isSourceNode(type: string): boolean {
     return sourceTypes.includes(type);
@@ -79,14 +80,18 @@ function buildSourceConfig(node: Node, nodes: Node[], edges: Edge[]): SourceConf
                 type: 'http_listener',
                 config: {
                     port: Number(resolveConfigValue(node, 'port', 'config-port', nodes, edges)) || 8080,
-                    path: resolveConfigValue(node, 'path', 'config-path', nodes, edges)
+                    path: resolveConfigValue(node, 'path', 'config-path', nodes, edges),
+                    cert_path: data.cert_path || undefined,
+                    key_path: data.key_path || undefined
                 }
             };
         case 'tcpListener':
             return {
                 type: 'tcp_listener',
                 config: {
-                    port: Number(resolveConfigValue(node, 'port', 'config-port', nodes, edges)) || 9090
+                    port: Number(resolveConfigValue(node, 'port', 'config-port', nodes, edges)) || 9090,
+                    cert_path: data.cert_path || undefined,
+                    key_path: data.key_path || undefined
                 }
             };
         case 'fileReader':
@@ -142,7 +147,16 @@ function buildDestinationConfig(node: Node, nodes: Node[], edges: Edge[]): Desti
 
     switch (type) {
         case 'fileWriter':
-            return { ...base, type: 'file_writer', config: { path: data.path || './output', filename: data.filename } };
+            return {
+                ...base,
+                type: 'file_writer',
+                config: {
+                    path: data.path || './output',
+                    filename: data.filename,
+                    append: data.append || false,
+                    encoding: data.encoding || 'UTF-8'
+                }
+            };
         case 'httpSender':
             return { ...base, type: 'http_sender', config: { url: data.url || '', method: data.method || 'POST' } };
         case 'databaseWriter':
@@ -153,6 +167,8 @@ function buildDestinationConfig(node: Node, nodes: Node[], edges: Edge[]): Desti
             };
         case 'tcpSender':
             return { ...base, type: 'tcp_sender', config: { host: data.host || '127.0.0.1', port: Number(data.port) || 9000 } };
+        case 'luaDestination':
+            return { ...base, type: 'lua_script', config: { code: data.code || 'return msg' } };
         default:
             return { ...base, type: 'file_writer', config: { path: './output.txt' } };
     }

@@ -9,6 +9,7 @@ pub enum MessageStatus {
     PROCESSING,
     SENT,
     ERROR,
+    FILTERED,
 }
 
 impl ToString for MessageStatus {
@@ -18,6 +19,7 @@ impl ToString for MessageStatus {
             MessageStatus::PROCESSING => "PROCESSING".to_string(),
             MessageStatus::SENT => "SENT".to_string(),
             MessageStatus::ERROR => "ERROR".to_string(),
+            MessageStatus::FILTERED => "FILTERED".to_string(),
         }
     }
 }
@@ -29,6 +31,7 @@ impl From<String> for MessageStatus {
             "PROCESSING" => MessageStatus::PROCESSING,
             "SENT" => MessageStatus::SENT,
             "ERROR" => MessageStatus::ERROR,
+            "FILTERED" => MessageStatus::FILTERED,
             _ => MessageStatus::ERROR, // Default to error if unknown
         }
     }

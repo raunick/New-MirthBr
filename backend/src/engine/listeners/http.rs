@@ -12,9 +12,12 @@ use crate::storage::messages::MessageStore;
 use uuid::Uuid;
 use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
+use std::sync::{Arc, Mutex};
 
 /// Maximum request body size (1MB)
 const MAX_BODY_SIZE: usize = 1024 * 1024;
+
+use crate::config::TlsConfig;
 
 pub struct HttpListener {
     pub port: u16,
@@ -23,10 +26,11 @@ pub struct HttpListener {
     pub sender: mpsc::Sender<Message>,
     pub allowed_origins: Option<Vec<String>>,
     pub store: Option<MessageStore>,
+    pub tls_config: Option<TlsConfig>,
 }
 
 impl HttpListener {
-    pub fn new(port: u16, path: String, channel_id: Uuid, sender: mpsc::Sender<Message>, store: Option<MessageStore>) -> Self {
+    pub fn new(port: u16, path: String, channel_id: Uuid, sender: mpsc::Sender<Message>, store: Option<MessageStore>, tls_config: Option<TlsConfig>) -> Self {
         Self {
             port,
             path,
@@ -34,6 +38,7 @@ impl HttpListener {
             sender,
             allowed_origins: None,
             store,
+            tls_config,
         }
     }
 
@@ -123,25 +128,53 @@ impl HttpListener {
             .unwrap_or_else(|_| std::net::IpAddr::V4(std::net::Ipv4Addr::new(0, 0, 0, 0)));
 
         let addr = SocketAddr::from((bind_addr, self.port));
-        tracing::info!("📡 Channel {} listening on HTTP {}:{}", self.channel_id, bind_addr, self.port);
-
-        let listener = match tokio::net::TcpListener::bind(addr).await {
-            Ok(l) => l,
-            Err(e) => {
-                tracing::error!("❌ Failed to bind port {} for channel {}: {}", self.port, self.channel_id, e);
-                return;
-            }
-        };
         
-        // Spawn the server in a new task with ConnectInfo support
-        tokio::spawn(async move {
-            if let Err(e) = axum::serve(
-                listener,
-                app.into_make_service_with_connect_info::<SocketAddr>()
+        if let Some(tls_config) = &self.tls_config {
+            tracing::info!("🔒 Channel {} listening on HTTPS {}:{}", self.channel_id, bind_addr, self.port);
+            
+            // Load TLS Config
+            let rustls_config = match axum_server::tls_rustls::RustlsConfig::from_pem_file(
+                &tls_config.cert_path,
+                &tls_config.key_path
             ).await {
-                tracing::error!("Channel server error: {}", e);
-            }
-        });
+                Ok(c) => c,
+                Err(e) => {
+                    tracing::error!("❌ Failed to load TLS certificates for channel {}: {}", self.channel_id, e);
+                    return;
+                }
+            };
+
+            // Spawn HTTPS server
+            tokio::spawn(async move {
+                if let Err(e) = axum_server::bind_rustls(addr, rustls_config)
+                    .serve(app.into_make_service_with_connect_info::<SocketAddr>())
+                    .await 
+                {
+                    tracing::error!("Channel HTTPS server error: {}", e);
+                }
+            });
+
+        } else {
+            tracing::info!("📡 Channel {} listening on HTTP {}:{}", self.channel_id, bind_addr, self.port);
+
+            let listener = match tokio::net::TcpListener::bind(addr).await {
+                Ok(l) => l,
+                Err(e) => {
+                    tracing::error!("❌ Failed to bind port {} for channel {}: {}", self.port, self.channel_id, e);
+                    return;
+                }
+            };
+            
+            // Spawn HTTP server
+            tokio::spawn(async move {
+                if let Err(e) = axum::serve(
+                    listener,
+                    app.into_make_service_with_connect_info::<SocketAddr>()
+                ).await {
+                    tracing::error!("Channel HTTP server error: {}", e);
+                }
+            });
+        }
     }
 }
 
@@ -158,7 +191,7 @@ async fn handler(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     body: String
-) -> (StatusCode, &'static str) {
+) -> impl axum::response::IntoResponse {
     let origin = format!("HTTP :{}{} from {}", state.port, state.path, addr.ip());
     
     // 1. Persist Message
@@ -172,7 +205,7 @@ async fn handler(
             },
             Err(e) => {
                  tracing::error!("CRITICAL: Failed to persist HTTP message: {}", e);
-                 return (StatusCode::INTERNAL_SERVER_ERROR, "Persistence Failed");
+                 return (StatusCode::INTERNAL_SERVER_ERROR, "Persistence Failed".to_string());
             }
         }
     }
@@ -184,12 +217,33 @@ async fn handler(
         msg.id = uuid;
     }
     
-    // 3. Send to channel processing loop
+    // 3. Prepare Response Channel (Sync Wait)
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    msg.response_tx = Some(Arc::new(Mutex::new(Some(tx))));
+
+    // 4. Send to channel processing loop
     if let Err(e) = state.sender.send(msg).await {
         tracing::error!("Failed to send message to channel pipeline: {}", e);
-        return (StatusCode::INTERNAL_SERVER_ERROR, "Internal Error");
+        return (StatusCode::INTERNAL_SERVER_ERROR, "Internal Error".to_string());
     }
 
-    (StatusCode::ACCEPTED, "Received")
+    // 5. Wait for Result (Sync Mode)
+    // Wait up to 30 seconds for processing
+    match tokio::time::timeout(Duration::from_secs(30), rx).await {
+        Ok(result) => {
+            match result {
+                Ok(Ok(_)) => (StatusCode::OK, "Message Processed Successfully".to_string()),
+                Ok(Err(error_msg)) => {
+                    tracing::warn!("Request failed validation/processing: {}", error_msg);
+                    (StatusCode::BAD_REQUEST, error_msg) 
+                },
+                Err(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Channel Dropped Response".to_string()),
+            }
+        },
+        Err(_) => {
+             tracing::error!("Request timed out waiting for processing");
+             (StatusCode::GATEWAY_TIMEOUT, "Processing Timeout".to_string())
+        }
+    }
 }
 

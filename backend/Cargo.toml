@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-axum = "0.7"
+axum = { version = "0.7", features = ["ws"] }
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
@@ -18,6 +18,13 @@ reqwest = { version = "0.11", features = ["json"] }
 chrono = { version = "0.4", features = ["serde"] }
 tower-http = { version = "0.5", features = ["cors", "limit", "normalize-path"] }
 url = "2.5"
-sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls", "chrono"] }
+sqlx = { version = "0.8.6", features = ["sqlite", "postgres", "mysql", "runtime-tokio-rustls", "chrono"] }
 tower = "0.5.2"
+rustls = "0.23"
+tokio-rustls = "0.26"
+rustls-pemfile = "2.1"
+axum-server = { version = "0.7", features = ["tls-rustls"] }
+glob = "0.3"
+base64 = "0.22"
+futures = "0.3"
 

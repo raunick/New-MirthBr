@@ -166,6 +166,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             timestamp: chrono::Utc::now(),
             origin: Some("test".to_string()),
+            response_tx: None,
         };
         let result = processor.process(msg).unwrap();
         assert_eq!(result.content, "HELLO");
@@ -182,6 +183,7 @@ mod tests {
             metadata: std::collections::HashMap::new(),
             timestamp: chrono::Utc::now(),
             origin: Some("test".to_string()),
+            response_tx: None,
         };
         assert!(processor.process(msg).is_err());
     }

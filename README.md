@@ -42,6 +42,29 @@ Uma **engine de integração para saúde** de alta performance (alternativa ao M
 - **Autenticação Robusta**: Proteção contra força bruta, rate limiting e hashing seguro de senhas.
 - **API Segura**: Validação estrita de headers e CORS restritivo.
 
+### Respostas Síncronas e Feedback de Erros (NOVO)
+- **Feedback Imediato**: O HTTP Listener agora espera o processamento completar antes de responder, retornando o status real da operação.
+- **Propagação de Erros Lua**: `log.error()` em scripts Lua agora **interrompe o pipeline** e retorna a mensagem de erro ao cliente HTTP com status `400 Bad Request`.
+- **Mensagens de Erro Detalhadas**: Erros de validação (ex: "ID do paciente (PID-3) é obrigatório") são retornados diretamente ao cliente.
+- **Logs Otimizados**: O warning de API key em desenvolvimento agora aparece apenas uma vez na inicialização.
+
+### Retry Automático (NOVO)
+- **Recuperação Automática**: Mensagens com erro são automaticamente reprocessadas com **backoff exponencial** (1min, 2min, 4min...).
+- **Configurável por Canal**: Defina `max_retries` por canal para controlar quantas tentativas serão feitas.
+- **RetryWorker**: Worker em background verifica mensagens com erro a cada 30 segundos e as reenvia ao pipeline.
+- **Status Tracking**: Acompanhe o `retry_count` de cada mensagem no banco de dados.
+
+### Deduplicação de Mensagens (NOVO)
+- **Prevenção de Duplicatas**: Mensagens idênticas são automaticamente detectadas e ignoradas.
+- **Hash de Conteúdo**: Baseado em hash SHA do conteúdo da mensagem por canal.
+- **TTL de 24 Horas**: Entradas expiram após 24h, permitindo reprocessamento posterior.
+- **CleanupWorker**: Limpeza automática de entradas expiradas a cada hora.
+
+### Métricas em Tempo Real (NOVO)
+- **WebSocket Live**: Endpoint `/ws/metrics` transmite eventos PROCESSING, SENT, ERROR em tempo real.
+- **Dashboard Interativo**: Painel "Metrics" no frontend exibe contadores e feed ao vivo.
+- **Estatísticas por Canal**: Visualize processed/sent/errors por canal instantaneamente.
+
 ---
 
 ## 📦 Tipos de Nós Disponíveis
@@ -86,6 +109,42 @@ O MirthBR foi atualizado com foco em **Security by Design** e modernização arq
 - **Estado Global com Zustand**: O Frontend agora utiliza **Zustand** para gerenciamento de estado, garantindo maior performance e previsibilidade na manipulação de fluxos complexos.
 - **Test Node Avançado**: Nova ferramenta de teste que permite tanto injetar mensagens diretamente no pipeline interno quanto realizar requisições HTTP externas para validar endpoints reais.
 - **Viewer de Canais Backend**: Interface dedicada para inspeção de canais "Backend-Only" (definidos via código/configuração estática).
+
+### MLLP Robusto (Fase 1)
+- **State Machine Completa**: `MllpFrameAccumulator` com estados `WaitingStart`, `Accumulating`, `Complete` para remontagem de mensagens fragmentadas.
+- **Timeout de Sessão**: Sessões MLLP expiram após 30s de inatividade (configurável).
+- **ACK Completo**: Resposta ACK inclui MSH-9 e MSH-10 conforme especificação HL7.
+- **Suporte a Mensagens Grandes**: Mensagens HL7 de até 50KB+ fragmentadas são corretamente remontadas.
+
+### TCP Sender Destination (Fase 1)
+- **MLLP Framing**: Mensagens são automaticamente envolvidas com 0x0B/0x1C/0x0D para envio.
+- **ACK Reception**: Aguarda e valida ACK do servidor remoto.
+- **Timeout Configurável**: Evita bloqueios em servidores não responsivos.
+
+### Graceful Shutdown (Fase 1)
+- **Sinal de Broadcast**: Canal `tokio::sync::broadcast` para coordenar shutdown.
+- **Drain de Mensagens**: Mensagens em-flight são processadas antes do encerramento.
+- **Hook SIGTERM**: `kill -15 PID` espera mensagens finalizarem.
+
+### TLS/HTTPS (Fase 1)
+- **HTTPS para Admin API**: Configure via `TLS_CERT_PATH` e `TLS_KEY_PATH`.
+- **TLS para TCP/MLLP Listeners**: Suporte a certificados por canal.
+- **Self-Signed Certificates**: Documentação para geração com OpenSSL incluída.
+
+### Database Connectors (Fase 2)
+- **Database Poller Source**: Consulta periódica em Postgres, MySQL ou SQLite.
+- **Database Writer Destination**: INSERT/UPDATE com query configurável.
+- **Connection Pooling**: Gerenciamento eficiente de conexões via `sqlx`.
+
+### File Connectors (Fase 2)
+- **File Reader Source**: Polling de diretório com glob patterns (ex: `*.hl7`).
+- **File Writer Avançado**: Modo append, encoding base64, templates de filename (ex: `${timestamp}.json`).
+- **Auto-Rename**: Arquivos processados são renomeados para `.processed`.
+
+### Processors Avançados (Fase 3)
+- **Mapper Processor**: Mapeamento JSON campo-a-campo com dot-notation.
+- **Filter Processor**: Filtro condicional baseado em Lua (retorna true/false).
+- **Lua Destination**: Execute scripts Lua personalizados como destino.
 
 ---
 
@@ -188,6 +247,9 @@ return msg.content:upper()
 | `/api/channels` | GET | Listar canais ativos |
 | `/api/logs` | GET | Obter entradas de log recentes |
 | `/api/health` | GET | Verificação de saúde (Health check) |
+| `/api/messages` | GET | Listar mensagens com filtros (status, channel_id) |
+| `/api/messages/:id/retry` | POST | Reprocessar manualmente uma mensagem com erro |
+| `/ws/metrics` | WebSocket | Stream de métricas em tempo real |
 
 ### Payload de Deploy de Canal
 

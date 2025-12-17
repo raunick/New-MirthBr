@@ -3,6 +3,7 @@ use tokio::fs::OpenOptions;
 use tokio::io::AsyncWriteExt;
 use std::path::{Path, PathBuf, Component};
 use chrono::Utc;
+use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64_STANDARD};
 
 /// Maximum filename length
 const MAX_FILENAME_LENGTH: usize = 255;
@@ -12,12 +13,26 @@ const MAX_PATH_LENGTH: usize = 4096;
 pub struct FileWriter {
     path: String,
     filename_pattern: Option<String>,
+    append: bool,
+    encoding: String,
     channel_name: String,
 }
 
 impl FileWriter {
-    pub fn new(path: String, filename_pattern: Option<String>, channel_name: String) -> Self {
-        Self { path, filename_pattern, channel_name }
+    pub fn new(
+        path: String, 
+        filename_pattern: Option<String>,
+        append: Option<bool>,
+        encoding: Option<String>,
+        channel_name: String
+    ) -> Self {
+        Self { 
+            path, 
+            filename_pattern, 
+            append: append.unwrap_or(true), // Default to append
+            encoding: encoding.unwrap_or_else(|| "utf8".to_string()),
+            channel_name 
+        }
     }
 
     /// Sanitize a filename to prevent path traversal
@@ -90,6 +105,9 @@ impl FileWriter {
                 let date = Utc::now().format("%Y-%m-%d").to_string();
                 filename = filename.replace("${date}", &date);
             }
+            if filename.contains("${channel}") {
+                 filename = filename.replace("${channel}", &self.channel_name);
+            }
             
             filename
         } else {
@@ -124,16 +142,38 @@ impl FileWriter {
 
         let mut file = OpenOptions::new()
             .create(true)
-            .append(true)
+            .append(self.append)
+            .write(true) // Ensure write access
+            .truncate(!self.append)
             .open(&safe_path)
             .await?;
 
-        file.write_all(msg.content.as_bytes()).await?;
-        file.write_all(b"\n").await?;
+        // Handle Content
+        let bytes_to_write = if self.encoding.eq_ignore_ascii_case("base64") {
+             // Decode
+             match BASE64_STANDARD.decode(&msg.content) {
+                 Ok(b) => b,
+                 Err(e) => {
+                     return Err(anyhow::anyhow!("Failed to decode Base64 content: {}", e));
+                 }
+             }
+        } else {
+            // UTF-8
+             msg.content.as_bytes().to_vec()
+        };
+
+        file.write_all(&bytes_to_write).await?;
+        
+        // Add newline only if NOT base64 (binary) and we assume text logs
+        if !self.encoding.eq_ignore_ascii_case("base64") {
+             file.write_all(b"\n").await?;
+        }
         
         tracing::info!(
             channel = %self.channel_name,
             path = %safe_path.display(),
+            mode = %if self.append { "append" } else { "overwrite" },
+            encoding = %self.encoding,
             "Written to file"
         );
         Ok(())
@@ -164,4 +204,3 @@ mod tests {
         assert!(path.to_string_lossy().contains("somefile.txt"));
     }
 }
-

@@ -1,3 +1,5 @@
+use tokio::sync::oneshot;
+use std::sync::{Arc, Mutex};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -12,6 +14,9 @@ pub struct Message {
     pub timestamp: DateTime<Utc>,
     #[serde(default)]
     pub origin: Option<String>,
+    #[serde(skip)]
+    #[serde(default)]
+    pub response_tx: Option<Arc<Mutex<Option<oneshot::Sender<Result<String, String>>>>>>,
 }
 
 impl Message {
@@ -23,6 +28,7 @@ impl Message {
             metadata: HashMap::new(),
             timestamp: Utc::now(),
             origin: Some(origin),
+            response_tx: None,
         }
     }
 }
