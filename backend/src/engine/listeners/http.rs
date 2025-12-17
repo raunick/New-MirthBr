@@ -2,12 +2,13 @@ use axum::{
     routing::post,
     Router,
     extract::{State, ConnectInfo},
-    http::{header::{CONTENT_TYPE, AUTHORIZATION}, HeaderValue, Method},
+    http::{header::{CONTENT_TYPE, AUTHORIZATION}, HeaderValue, Method, StatusCode},
 };
 use std::net::SocketAddr;
 use std::time::Duration;
 use tokio::sync::mpsc;
 use crate::engine::message::Message;
+use crate::storage::messages::MessageStore;
 use uuid::Uuid;
 use tower_http::cors::CorsLayer;
 use tower_http::limit::RequestBodyLimitLayer;
@@ -21,16 +22,18 @@ pub struct HttpListener {
     pub channel_id: Uuid,
     pub sender: mpsc::Sender<Message>,
     pub allowed_origins: Option<Vec<String>>,
+    pub store: Option<MessageStore>,
 }
 
 impl HttpListener {
-    pub fn new(port: u16, path: String, channel_id: Uuid, sender: mpsc::Sender<Message>) -> Self {
+    pub fn new(port: u16, path: String, channel_id: Uuid, sender: mpsc::Sender<Message>, store: Option<MessageStore>) -> Self {
         Self {
             port,
             path,
             channel_id,
             sender,
             allowed_origins: None,
+            store,
         }
     }
 
@@ -110,6 +113,7 @@ impl HttpListener {
                 sender: self.sender.clone(),
                 port: self.port,
                 path: self.path.clone(),
+                store: self.store.clone(),
             });
 
         // Configurable bind address for listeners
@@ -147,22 +151,45 @@ struct AppState {
     sender: mpsc::Sender<Message>,
     port: u16,
     path: String,
+    store: Option<MessageStore>,
 }
 
 async fn handler(
     State(state): State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     body: String
-) -> &'static str {
+) -> (StatusCode, &'static str) {
     let origin = format!("HTTP :{}{} from {}", state.port, state.path, addr.ip());
-    let msg = Message::new(state.channel_id, body, origin);
     
-    // Send to channel processing loop
-    if let Err(e) = state.sender.send(msg).await {
-        tracing::error!("Failed to send message to channel pipeline: {}", e);
-        return "Internal Error";
+    // 1. Persist Message
+    let mut msg_id_str = Uuid::new_v4().to_string(); // Default if not using store
+    
+    if let Some(s) = &state.store {
+        match s.save_message(&state.channel_id.to_string(), &body).await {
+            Ok(id) => {
+                msg_id_str = id;
+                tracing::info!("HTTP Message persisted to disk with ID: {}", msg_id_str);
+            },
+            Err(e) => {
+                 tracing::error!("CRITICAL: Failed to persist HTTP message: {}", e);
+                 return (StatusCode::INTERNAL_SERVER_ERROR, "Persistence Failed");
+            }
+        }
     }
 
-    "Received"
+    // 2. create Message
+    let mut msg = Message::new(state.channel_id, body, origin);
+    // Override ID
+    if let Ok(uuid) = Uuid::parse_str(&msg_id_str) {
+        msg.id = uuid;
+    }
+    
+    // 3. Send to channel processing loop
+    if let Err(e) = state.sender.send(msg).await {
+        tracing::error!("Failed to send message to channel pipeline: {}", e);
+        return (StatusCode::INTERNAL_SERVER_ERROR, "Internal Error");
+    }
+
+    (StatusCode::ACCEPTED, "Received")
 }
 

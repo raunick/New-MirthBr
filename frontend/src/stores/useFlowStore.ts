@@ -45,8 +45,10 @@ interface FlowState {
     // Channel configuration
     channelName: string;
     channelId: string;
+    errorDestinationId?: string;
     setChannelName: (name: string) => void;
     setChannelId: (id: string) => void;
+    setErrorDestinationId: (id: string | undefined) => void;
 }
 
 const nodeDefaults: Record<string, NodeData> = {
@@ -163,10 +165,12 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     edges: initialEdges,
     channelName: 'My Channel',
     channelId: crypto.randomUUID(), // Initialize with a valid UUID
+    errorDestinationId: undefined,
     callbacks: {},
 
     setChannelName: (name) => set({ channelName: name }),
     setChannelId: (id) => set({ channelId: id }),
+    setErrorDestinationId: (id) => set({ errorDestinationId: id }),
     onNodesChange: (changes: NodeChange[]) => {
         set({
             nodes: applyNodeChanges(changes, get().nodes),
@@ -304,7 +308,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     },
 
     saveFlow: () => {
-        const { nodes, edges, channelName, channelId } = get();
+        const { nodes, edges, channelName, channelId, errorDestinationId } = get();
 
         // Sanitize nodes to remove sensitive data before saving
         const sanitizedNodes = nodes.map(node => ({
@@ -326,6 +330,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
             edges,
             channelName,
             channelId,
+            errorDestinationId,
             savedAt: new Date().toISOString(),
         };
 
@@ -343,7 +348,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
                 nodes: data.nodes || [],
                 edges: data.edges || [],
                 channelName: data.channelName || 'Loaded Channel',
-                channelId: data.channelId || crypto.randomUUID()
+                channelId: data.channelId || crypto.randomUUID(),
+                errorDestinationId: data.errorDestinationId
             });
             return;
         }
@@ -363,7 +369,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
                     nodes: flowData.nodes || [],
                     edges: flowData.edges || [],
                     channelName: flowData.channelName || 'My Channel',
-                    channelId: cid
+                    channelId: cid,
+                    errorDestinationId: flowData.errorDestinationId
                 });
             } catch (e) {
                 console.error('Failed to load flow', e);

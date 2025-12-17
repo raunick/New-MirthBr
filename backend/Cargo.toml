@@ -18,6 +18,6 @@ reqwest = { version = "0.11", features = ["json"] }
 chrono = { version = "0.4", features = ["serde"] }
 tower-http = { version = "0.5", features = ["cors", "limit", "normalize-path"] }
 url = "2.5"
-sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls"] }
+sqlx = { version = "0.8.6", features = ["sqlite", "runtime-tokio-rustls", "chrono"] }
 tower = "0.5.2"
 

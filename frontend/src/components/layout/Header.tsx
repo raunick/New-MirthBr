@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Zap, Settings, LogOut, User } from 'lucide-react';
+import { Activity, Zap, Settings, LogOut, User, MessageSquare } from 'lucide-react';
+import Link from 'next/link';
 import axios from 'axios';
 import SettingsModal from './SettingsModal';
 import { useAuthStore } from '@/stores/useAuthStore';
@@ -70,6 +71,11 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
                             <Activity size={14} />
                             View Logs
                         </button>
+
+                        <Link href="/messages" className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[var(--glass-bg)] transition-colors text-xs font-medium text-[var(--foreground-muted)] hover:text-[var(--foreground)] border border-transparent hover:border-[var(--glass-border)]">
+                            <MessageSquare size={14} />
+                            Messages
+                        </Link>
                     </div>
 
                     {/* Backend Status */}

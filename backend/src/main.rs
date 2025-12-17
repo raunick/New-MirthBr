@@ -107,6 +107,9 @@ async fn main() {
             tracing::error!("Failed to start stored channel: {}", e);
         }
     }
+    
+    // Trigger Recovery of Pending Messages
+    channel_manager.recover_pending_messages().await;
 
     // Auto-deploy "Hello World" Channel
     let hello_channel = storage::models::Channel {
@@ -125,9 +128,10 @@ async fn main() {
             storage::models::DestinationConfig {
                 id: "dest-1".to_string(),
                 name: "File Out".to_string(),
-                kind: storage::models::DestinationType::File { path: "hello_output.txt".to_string(), filename: None }
+                kind: storage::models::DestinationType::File { path: "./output".to_string(), filename: None }
             }
-        ]
+        ],
+        error_destination: None,
     };
 
     tracing::info!("Auto-deploying Hello World Channel on Port 8090...");
@@ -149,6 +153,8 @@ async fn main() {
         .route("/channels/:id/test", post(api::handlers::test::test_channel))
         .route("/test/tcp", post(api::handlers::test::test_tcp_dispatch))
         .route("/logs", get(api::handlers::logs::get_logs))
+        .route("/messages", get(api::messages::list_messages))
+        .route("/messages/:id/retry", post(api::messages::retry_message))
         .layer(middleware::from_fn(auth_middleware));
 
     // Build our application

@@ -38,6 +38,27 @@ impl Database {
         .execute(&self.pool)
         .await?;
 
+        // Create messages table
+        sqlx::query(
+            "CREATE TABLE IF NOT EXISTS messages (
+                id TEXT PRIMARY KEY,
+                channel_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                status TEXT NOT NULL,
+                error_message TEXT,
+                retry_count INTEGER DEFAULT 0,
+                created_at DATETIME NOT NULL,
+                updated_at DATETIME NOT NULL
+            )"
+        )
+        .execute(&self.pool)
+        .await?;
+        
+        // Create indexes
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_messages_channel_status ON messages(channel_id, status)")
+            .execute(&self.pool)
+            .await?;
+
         Ok(())
     }
 

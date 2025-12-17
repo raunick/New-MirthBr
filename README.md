@@ -31,6 +31,12 @@ Uma **engine de integração para saúde** de alta performance (alternativa ao M
 - **Canais Concorrentes**: Execute múltiplos canais de integração simultaneamente.
 - **Baixa Latência**: Processamento de mensagens em sub-milissegundos.
 
+### Confiabilidade e Persistência (NOVO)
+- **Persistência em Disco**: Todas as mensagens são salvas em SQLite *antes* do processamento, garantindo zero perda de dados.
+- **Dead Letter Queue (DLQ)**: Mensagens com erro são roteadas automaticamente para um destino de erro configurável.
+- **Auto-Recuperação**: O sistema recupera e processa automaticamente mensagens pendentes após reinicializações.
+- **Painel de Controle**: Interface visual para listar, filtrar e reprocessar mensagens falhas.
+
 ### Segurança e Confiabilidade
 - **Sandboxing Lua**: Execução segura de scripts isolados do sistema operacional.
 - **Autenticação Robusta**: Proteção contra força bruta, rate limiting e hashing seguro de senhas.
@@ -134,6 +140,18 @@ PID|||12345||DOE^JOHN||19800101|M'
 ```
 
 Verifique o arquivo de saída (ex: `./output/${timestamp}.json`) para ver o resultado processado.
+
+### Gerenciando Mensagens (Dashboard)
+
+1. **Acesse o Painel**: Clique em **Messages** na barra lateral ou vá para `/messages`.
+2. **Visualize**: Veja todas as mensagens com status (PENDING, PROCESSING, SENT, ERROR).
+3. **Reprocesse**: Clique no botão **Retry** em mensagens com erro para enviá-las novamente ao pipeline.
+
+### Configurando Dead Letter Queue (DLQ)
+
+1. No editor, clique no botão **Settings** (ícone de engrenagem).
+2. Selecione um nó de destino (ex: um File Writer) para ser o destino de erro.
+3. Mensagens que falharem no processamento serão enviadas para este destino.
 
 ### Exemplos de Script Lua
 

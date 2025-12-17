@@ -22,6 +22,8 @@ pub struct Channel {
     pub source: SourceConfig,
     pub processors: Vec<ProcessorConfig>,
     pub destinations: Vec<DestinationConfig>,
+    #[serde(default)]
+    pub error_destination: Option<DestinationConfig>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]

@@ -1,0 +1,1 @@
+{"MSH":["MSH","^~\\&","VAR_Sender","VAR_Facility","VAR_Dest","VAR_Dest_Fac","202301010000","","ADT^A01","MSG001","P","2.3"],"PID":["PID","","","999999^^^MRN","","DOE^JANE"]}

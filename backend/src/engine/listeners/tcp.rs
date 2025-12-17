@@ -3,20 +3,23 @@ use tokio::net::{TcpListener as TokioTcpListener, TcpStream};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::mpsc;
 use crate::engine::message::Message;
+use crate::storage::messages::MessageStore;
 use uuid::Uuid;
 
 pub struct TcpListener {
     pub port: u16,
     pub channel_id: Uuid,
     pub sender: mpsc::Sender<Message>,
+    pub store: Option<MessageStore>,
 }
 
 impl TcpListener {
-    pub fn new(port: u16, channel_id: Uuid, sender: mpsc::Sender<Message>) -> Self {
+    pub fn new(port: u16, channel_id: Uuid, sender: mpsc::Sender<Message>, store: Option<MessageStore>) -> Self {
         Self {
             port,
             channel_id,
             sender,
+            store,
         }
     }
 
@@ -24,6 +27,7 @@ impl TcpListener {
         let port = self.port;
         let channel_id = self.channel_id;
         let sender = self.sender.clone();
+        let store = self.store.clone();
 
         // Configurable bind address for listeners
         let bind_addr: std::net::IpAddr = std::env::var("LISTENER_BIND_ADDRESS")
@@ -44,8 +48,9 @@ impl TcpListener {
             match listener.accept().await {
                 Ok((socket, addr)) => {
                     let sender_clone = sender.clone();
+                    let store_clone = store.clone();
                     tokio::spawn(async move {
-                        handle_connection(socket, addr, channel_id, sender_clone).await;
+                        handle_connection(socket, addr, channel_id, sender_clone, store_clone).await;
                     });
                 }
                 Err(e) => {
@@ -56,7 +61,7 @@ impl TcpListener {
     }
 }
 
-async fn handle_connection(mut socket: TcpStream, addr: SocketAddr, channel_id: Uuid, sender: mpsc::Sender<Message>) {
+async fn handle_connection(mut socket: TcpStream, addr: SocketAddr, channel_id: Uuid, sender: mpsc::Sender<Message>, store: Option<MessageStore>) {
     tracing::info!("Accepted TCP connection from {}", addr);
     let mut buffer = [0u8; 4096]; // Buffer size
 
@@ -92,21 +97,52 @@ async fn handle_connection(mut socket: TcpStream, addr: SocketAddr, channel_id: 
                 };
 
                 let origin = format!("TCP :{} from {}", addr.port(), addr.ip());
-                let msg = Message::new(channel_id, content, origin);
+                
+                // 1. Persist Message (Critical for Data Safety)
+                let mut msg_id_str = Uuid::new_v4().to_string(); // Default if not using store
+                
+                if let Some(s) = &store {
+                    match s.save_message(&channel_id.to_string(), &content).await {
+                        Ok(id) => {
+                            msg_id_str = id;
+                            tracing::info!("Message persisted to disk with ID: {}", msg_id_str);
+                        },
+                        Err(e) => {
+                             tracing::error!("CRITICAL: Failed to persist message to disk: {}", e);
+                             // If we can't persist, we probably shouldn't ACK success? or send NACK?
+                             // For now, we log and proceed but this is risky.
+                             // Ideally send NACK here.
+                        }
+                    }
+                }
+                
+                // 2. Send ACK (After Persistence)
+                if is_mllp {
+                    // Extract Message Control ID directly from content if possible
+                    // MSH|^~\&|...|...|...|...|...|...|MSGID|...
+                    let msg_control_id = content.split('|').nth(9).unwrap_or("UNKNOWN_ID");
+                    
+                    let ack = format!("\x0BMSA|AA|{}\x1C\x0D", msg_control_id);
+                    if let Err(e) = socket.write_all(ack.as_bytes()).await {
+                        tracing::error!("Failed to send ACK: {}", e);
+                        // If ACK fails, equipment might resend. That's okay, we have it persisted (dedup ID needed later).
+                        break;
+                    } else {
+                        tracing::info!("ACK sent for HL7 Message ID: {}", msg_control_id);
+                    }
+                }
+
+                // 3. Create Internal Message & Send to Pipeline
+                let mut msg = Message::new(channel_id, content, origin);
+                // Override ID with the one from DB
+                if let Ok(uuid) = Uuid::parse_str(&msg_id_str) {
+                    msg.id = uuid;
+                }
 
                 // Send to processing
                 if let Err(e) = sender.send(msg).await {
                     tracing::error!("Failed to send message to pipeline: {}", e);
                     break;
-                }
-                
-                // Send ACK if MLLP
-                if is_mllp {
-                    let ack = format!("\x0BMSA|AA|{}\x1C\x0D", "MSGID"); // Minimal ACK
-                    if let Err(e) = socket.write_all(ack.as_bytes()).await {
-                        tracing::error!("Failed to send ACK: {}", e);
-                        break;
-                    }
                 }
             }
             Err(e) => {

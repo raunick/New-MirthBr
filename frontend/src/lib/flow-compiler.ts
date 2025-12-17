@@ -8,6 +8,7 @@ interface BackChannel {
     source: SourceConfig;
     processors: ProcessorConfig[];
     destinations: DestinationConfig[];
+    error_destination?: DestinationConfig;
 }
 
 type SourceConfig =
@@ -157,7 +158,7 @@ function buildDestinationConfig(node: Node, nodes: Node[], edges: Edge[]): Desti
     }
 }
 
-export function exportToRust(nodes: Node[], edges: Edge[], channelName: string = "New Channel", channelId?: string): BackChannel {
+export function exportToRust(nodes: Node[], edges: Edge[], channelName: string = "New Channel", channelId?: string, errorDestinationId?: string): BackChannel {
     const channel: BackChannel = {
         id: channelId || crypto.randomUUID(),
         name: channelName,
@@ -217,6 +218,14 @@ export function exportToRust(nodes: Node[], edges: Edge[], channelName: string =
             }
         }
     });
+
+    // Resolve Error Destination
+    if (errorDestinationId) {
+        const errorNode = nodes.find(n => n.id === errorDestinationId);
+        if (errorNode && isDestinationNode(errorNode.type || '')) {
+            channel.error_destination = buildDestinationConfig(errorNode, nodes, edges);
+        }
+    }
 
     return channel;
 }

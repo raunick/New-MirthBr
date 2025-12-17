@@ -49,11 +49,12 @@ import MergeNode from './nodes/MergeNode';
 
 import ContextMenu from './ContextMenu';
 import LuaEditorModal from '../editor/LuaEditorModal';
+import ChannelSettingsModal from './ChannelSettingsModal';
 import { Button } from '@/components/ui/button';
 import { exportToRust } from '@/lib/flow-compiler';
 import { deployChannel, testChannel } from '@/lib/api';
 import { validateConnection } from '@/lib/connectionValidation';
-import { Play, Save, Layout, Download, Upload } from 'lucide-react';
+import { Play, Save, Layout, Download, Upload, Settings } from 'lucide-react';
 import axios from 'axios';
 
 const nodeTypes = {
@@ -110,10 +111,12 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
         nodes, edges, onNodesChange, onEdgesChange, onConnect,
         setNodes, updateNodeData, deleteNode, duplicateNode, deleteEdge,
         addNodeAtPosition, saveFlow, loadFlow, exportFlow, importFlow,
-        channelName, setChannelName
+        channelName, setChannelName,
+        errorDestinationId, setErrorDestinationId
     } = useFlowStore();
 
     const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
     const [editorCode, setEditorCode] = useState("");
     const [isDeploying, setIsDeploying] = useState(false);
@@ -218,17 +221,18 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
 
     const handleDeploy = async () => {
         setIsDeploying(true);
-        const { channelName, channelId } = useFlowStore.getState();
+        const { channelName, channelId, errorDestinationId } = useFlowStore.getState();
 
         // Backend config
-        const channelConfig = exportToRust(nodes, edges, channelName || "My Channel", channelId);
+        const channelConfig = exportToRust(nodes, edges, channelName || "My Channel", channelId, errorDestinationId);
 
         // Frontend schema (for visual restoration)
         const frontendSchema = {
             nodes,
             edges,
             channelName: channelName || "My Channel",
-            channelId
+            channelId,
+            errorDestinationId
         };
 
         console.log("Deploying:", channelConfig);
@@ -391,6 +395,16 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
                     Save
                 </Button>
                 <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsSettingsOpen(true)}
+                    className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
+                    title="Channel Settings (DLQ)"
+                >
+                    <Settings size={16} className="mr-2" />
+                    Settings
+                </Button>
+                <Button
                     onClick={handleDeploy}
                     disabled={isDeploying}
                     size="sm"
@@ -400,6 +414,14 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
                     {isDeploying ? 'Deploying...' : 'Deploy Channel'}
                 </Button>
             </div>
+
+            <ChannelSettingsModal
+                isOpen={isSettingsOpen}
+                onClose={() => setIsSettingsOpen(false)}
+                nodes={nodes}
+                currentErrorDestinationId={errorDestinationId}
+                onSave={setErrorDestinationId}
+            />
 
             <ReactFlow
                 nodes={nodes}
