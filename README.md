@@ -254,6 +254,12 @@ mirthbr/
 │  └──────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────┘
 ```
+---
+
+### Confiabilidade e Recuperação (Roadmap)
+- **Guaranteed Delivery**: (Em breve) Sistema de filas persistentes para garantir zero perda de dados.
+- **Retry Policy**: Configuração de tentativas automáticas de reenvio para destinos offline.
+- **Smart ACKs**: Gestão inteligente de confirmações HL7 (AA/AE/AR).
 
 ---
 
