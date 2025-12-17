@@ -9,6 +9,7 @@ interface BackChannel {
     processors: ProcessorConfig[];
     destinations: DestinationConfig[];
     error_destination?: DestinationConfig;
+    max_retries?: number;
 }
 
 type SourceConfig =
@@ -174,14 +175,15 @@ function buildDestinationConfig(node: Node, nodes: Node[], edges: Edge[]): Desti
     }
 }
 
-export function exportToRust(nodes: Node[], edges: Edge[], channelName: string = "New Channel", channelId?: string, errorDestinationId?: string): BackChannel {
+export function exportToRust(nodes: Node[], edges: Edge[], channelName: string = "New Channel", channelId?: string, errorDestinationId?: string, maxRetries: number = 3): BackChannel {
     const channel: BackChannel = {
         id: channelId || crypto.randomUUID(),
         name: channelName,
         enabled: true,
         source: { type: 'http_listener', config: { port: 8080 } },
         processors: [],
-        destinations: []
+        destinations: [],
+        max_retries: maxRetries
     };
 
     // Find the source node - Prioritize real listeners over TestNode

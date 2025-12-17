@@ -90,3 +90,20 @@ pub async fn list_channels(State(manager): State<Arc<ChannelManager>>) -> impl I
         }
     }
 }
+
+pub async fn stop_channel(
+    State(manager): State<Arc<ChannelManager>>,
+    axum::extract::Path(id): axum::extract::Path<Uuid>,
+) -> impl IntoResponse {
+    match manager.stop_channel(id).await {
+        Ok(_) => (StatusCode::OK, Json(serde_json::json!({ "status": "stopped" }))),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() })))
+    }
+}
+
+pub async fn get_active_channels(
+    State(manager): State<Arc<ChannelManager>>,
+) -> impl IntoResponse {
+    let ids = manager.get_active_channel_ids();
+    Json(ids)
+}

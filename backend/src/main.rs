@@ -222,6 +222,8 @@ async fn main() {
     let protected_routes = Router::new()
         .route("/channels", post(api::handlers::channels::create_channel))
         .route("/channels", get(api::handlers::channels::list_channels))
+        .route("/channels/status", get(api::handlers::channels::get_active_channels))
+        .route("/channels/:id/stop", post(api::handlers::channels::stop_channel))
         .route("/channels/:id/test", post(api::handlers::test::test_channel))
         .route("/test/tcp", post(api::handlers::test::test_tcp_dispatch))
         .route("/logs", get(api::handlers::logs::get_logs))
@@ -314,6 +316,17 @@ async fn shutdown_signal(channel_manager: Arc<engine::channel_manager::ChannelMa
     }
 
     tracing::info!("🛑 Signal received, starting graceful shutdown...");
-    channel_manager.shutdown_all().await;
-    tracing::info!("✅ Channel Manager shutdown complete. Stopping API server...");
+    
+    // Create a timeout for the shutdown process
+    let cm = channel_manager.clone();
+    tokio::select! {
+        _ = cm.shutdown_all() => {
+            tracing::info!("✅ Channel Manager shutdown complete.");
+        },
+        _ = tokio::time::sleep(std::time::Duration::from_secs(10)) => {
+            tracing::warn!("⚠️ Shutdown timed out after 10s, forcing exit...");
+        }
+    }
+    
+    tracing::info!("Stopping API server...");
 }

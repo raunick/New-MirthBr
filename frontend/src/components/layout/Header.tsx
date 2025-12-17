@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Zap, Settings, LogOut, User, MessageSquare } from 'lucide-react';
+import { Activity, Zap, Settings, LogOut, User, MessageSquare, Square, Play } from 'lucide-react';
 import Link from 'next/link';
 import axios from 'axios';
 import SettingsModal from './SettingsModal';
 import { useAuthStore } from '@/stores/useAuthStore';
+import { useFlowStore } from '@/stores/useFlowStore';
 
 interface HeaderProps {
     isConnected?: boolean;
@@ -17,6 +18,8 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
     const [isConnected, setIsConnected] = useState(initialConnected);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const { username, logout } = useAuthStore();
+    const { isRunning, stopCurrentChannel } = useFlowStore();
+    const [isStopping, setIsStopping] = useState(false);
 
     useEffect(() => {
         const checkHealth = async () => {
@@ -40,6 +43,17 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
         }
     };
 
+    const handleStop = async () => {
+        setIsStopping(true);
+        try {
+            await stopCurrentChannel();
+        } catch (e) {
+            alert("Erro ao parar canal");
+        } finally {
+            setIsStopping(false);
+        }
+    };
+
     return (
         <>
             <header className="h-16 glass border-b border-[var(--glass-border)] flex items-center justify-between px-6">
@@ -57,6 +71,24 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
                 {/* Status Section */}
                 <div className="flex items-center gap-6">
                     <div className="flex gap-2">
+                        {/* Channel Status & Control */}
+                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--background-secondary)]/30 border border-[var(--glass-border)] mr-2">
+                            <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--foreground-muted)] mr-2">
+                                {isRunning ? 'Running' : 'Stopped'}
+                            </span>
+                            {isRunning && (
+                                <button
+                                    onClick={handleStop}
+                                    disabled={isStopping}
+                                    className="p-1 hover:bg-red-500/20 text-red-400 rounded transition-colors disabled:opacity-50"
+                                    title="Stop Channel"
+                                >
+                                    {isStopping ? <div className="w-3 h-3 border-2 border-current border-t-transparent animate-spin rounded-full" /> : <Square size={12} fill="currentColor" />}
+                                </button>
+                            )}
+                        </div>
+
                         <button
                             onClick={onTestChannel}
                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--background-secondary)]/50 hover:bg-[var(--glass-bg)] border border-[var(--glass-border)] transition-all text-xs font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)] hover:shadow-lg hover:shadow-[var(--primary)]/10"
@@ -87,23 +119,25 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
                         </Link>
                     </div>
 
-                    {/* Backend Status */}
+                    {/* Backend Status indicator */}
                     <div className="flex items-center gap-2">
                         <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[var(--success)] status-pulse' : 'bg-[var(--error)]'}`} />
                         <span className="text-sm text-[var(--foreground-muted)]">
-                            {isConnected ? 'Backend Connected' : 'Disconnected'}
+                            {isConnected ? 'Backend' : 'No Connection'}
                         </span>
                     </div>
 
-                    {/* Last Deploy Status */}
+                    {/* Last Deploy Status badge */}
                     {lastDeployStatus !== 'idle' && (
-                        <div className="flex items-center gap-2 px-3 py-1 rounded-full glass">
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-full glass border border-[var(--glass-border)]">
                             <Activity size={14} className={lastDeployStatus === 'success' ? 'text-[var(--success)]' : 'text-[var(--error)]'} />
                             <span className="text-xs text-[var(--foreground-muted)]">
                                 {lastDeployStatus === 'success' ? 'Deploy OK' : 'Deploy Failed'}
                             </span>
                         </div>
                     )}
+
+                    <div className="h-4 w-px bg-[var(--glass-border)] mx-2" />
 
                     {/* User Info */}
                     {username && (
@@ -142,3 +176,4 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
         </>
     );
 }
+

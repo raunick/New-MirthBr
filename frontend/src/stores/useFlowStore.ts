@@ -46,9 +46,16 @@ interface FlowState {
     channelName: string;
     channelId: string;
     errorDestinationId?: string;
+    maxRetries?: number;
     setChannelName: (name: string) => void;
     setChannelId: (id: string) => void;
     setErrorDestinationId: (id: string | undefined) => void;
+    setMaxRetries: (count: number | undefined) => void;
+
+    // Runtime Status
+    isRunning: boolean;
+    setRunning: (running: boolean) => void;
+    stopCurrentChannel: () => Promise<void>;
 }
 
 const nodeDefaults: Record<string, NodeData> = {
@@ -166,11 +173,28 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     channelName: 'My Channel',
     channelId: crypto.randomUUID(), // Initialize with a valid UUID
     errorDestinationId: undefined,
+    maxRetries: 3,
     callbacks: {},
 
     setChannelName: (name) => set({ channelName: name }),
     setChannelId: (id) => set({ channelId: id }),
     setErrorDestinationId: (id) => set({ errorDestinationId: id }),
+    setMaxRetries: (count) => set({ maxRetries: count }),
+
+    isRunning: false,
+    setRunning: (running) => set({ isRunning: running }),
+
+    stopCurrentChannel: async () => {
+        const { channelId } = get();
+        try {
+            const { stopChannel } = await import('@/lib/api');
+            await stopChannel(channelId);
+            set({ isRunning: false });
+        } catch (e) {
+            console.error("Failed to stop channel", e);
+            throw e;
+        }
+    },
     onNodesChange: (changes: NodeChange[]) => {
         set({
             nodes: applyNodeChanges(changes, get().nodes),
@@ -308,7 +332,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     },
 
     saveFlow: () => {
-        const { nodes, edges, channelName, channelId, errorDestinationId } = get();
+        const { nodes, edges, channelName, channelId, errorDestinationId, maxRetries } = get();
 
         // Sanitize nodes to remove sensitive data before saving
         const sanitizedNodes = nodes.map(node => ({
@@ -331,6 +355,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
             channelName,
             channelId,
             errorDestinationId,
+            maxRetries,
             savedAt: new Date().toISOString(),
         };
 
@@ -349,7 +374,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
                 edges: data.edges || [],
                 channelName: data.channelName || 'Loaded Channel',
                 channelId: data.channelId || crypto.randomUUID(),
-                errorDestinationId: data.errorDestinationId
+                errorDestinationId: data.errorDestinationId,
+                maxRetries: data.maxRetries ?? 3
             });
             return;
         }
@@ -370,7 +396,8 @@ export const useFlowStore = create<FlowState>((set, get) => ({
                     edges: flowData.edges || [],
                     channelName: flowData.channelName || 'My Channel',
                     channelId: cid,
-                    errorDestinationId: flowData.errorDestinationId
+                    errorDestinationId: flowData.errorDestinationId,
+                    maxRetries: flowData.maxRetries ?? 3
                 });
             } catch (e) {
                 console.error('Failed to load flow', e);
@@ -379,12 +406,14 @@ export const useFlowStore = create<FlowState>((set, get) => ({
     },
 
     exportFlow: () => {
-        const { nodes, edges, channelName, channelId } = get();
+        const { nodes, edges, channelName, channelId, maxRetries, errorDestinationId } = get();
         const flowData = {
             version: '1.0',
             name: channelName || 'MirthBR Workflow',
             channelName,
             channelId,
+            maxRetries,
+            errorDestinationId,
             nodes,
             edges,
             exportedAt: new Date().toISOString(),
@@ -399,7 +428,7 @@ export const useFlowStore = create<FlowState>((set, get) => ({
         URL.revokeObjectURL(url);
     },
 
-    importFlow: (data: { nodes: Node<NodeData>[]; edges: Edge[]; channelName?: string; channelId?: string }) => {
+    importFlow: (data: { nodes: Node<NodeData>[]; edges: Edge[]; channelName?: string; channelId?: string; maxRetries?: number; errorDestinationId?: string }) => {
         if (data.nodes && Array.isArray(data.nodes)) {
             // Validate imported channelId
             let cid = data.channelId;
@@ -412,7 +441,9 @@ export const useFlowStore = create<FlowState>((set, get) => ({
                 nodes: data.nodes,
                 edges: data.edges || [],
                 channelName: data.channelName || 'Imported Channel',
-                channelId: cid
+                channelId: cid,
+                maxRetries: data.maxRetries ?? 3,
+                errorDestinationId: data.errorDestinationId
             });
             get().saveFlow();
         }

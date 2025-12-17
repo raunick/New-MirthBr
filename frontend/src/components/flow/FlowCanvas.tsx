@@ -114,6 +114,8 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
         setNodes, updateNodeData, deleteNode, duplicateNode, deleteEdge,
         addNodeAtPosition, saveFlow, loadFlow, exportFlow, importFlow,
         channelName, setChannelName,
+        maxRetries, setMaxRetries,
+        isRunning, setRunning,
         errorDestinationId, setErrorDestinationId
     } = useFlowStore();
 
@@ -223,10 +225,10 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
 
     const handleDeploy = async () => {
         setIsDeploying(true);
-        const { channelName, channelId, errorDestinationId } = useFlowStore.getState();
+        const { channelName, channelId, errorDestinationId, maxRetries } = useFlowStore.getState();
 
         // Backend config
-        const channelConfig = exportToRust(nodes, edges, channelName || "My Channel", channelId, errorDestinationId);
+        const channelConfig = exportToRust(nodes, edges, channelName || "My Channel", channelId, errorDestinationId, maxRetries);
 
         // Frontend schema (for visual restoration)
         const frontendSchema = {
@@ -239,13 +241,16 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
 
         console.log("Deploying:", channelConfig);
         try {
-            await deployChannel({
+            const response = await deployChannel({
                 channel: channelConfig,
                 frontend_schema: frontendSchema
             });
-            onDeploySuccess?.();
-            // Also save to local storage for good measure
-            saveFlow();
+            if (response.status === 'deployed') {
+                onDeploySuccess?.();
+                // Also save to local storage for good measure
+                saveFlow();
+                setRunning(true);
+            }
         } catch (e) {
             onDeployError?.();
             console.error(e);
@@ -422,7 +427,11 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
                 onClose={() => setIsSettingsOpen(false)}
                 nodes={nodes}
                 currentErrorDestinationId={errorDestinationId}
-                onSave={setErrorDestinationId}
+                currentMaxRetries={maxRetries}
+                onSave={(destId, retries) => {
+                    setErrorDestinationId(destId);
+                    setMaxRetries(retries);
+                }}
             />
 
             <ReactFlow

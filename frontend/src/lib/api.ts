@@ -307,6 +307,40 @@ export const testTcp = async (host: string, port: number, payload: string, timeo
     }
 };
 
+export const stopChannel = async (channelId: string) => {
+    try {
+        const response = await api.post(`/channels/${channelId}/stop`);
+        return response.data;
+    } catch (error) {
+        if (error instanceof ApiError) {
+            throw error;
+        }
+        throw new ApiError(
+            'Failed to stop channel',
+            'STOP_ERROR',
+            500,
+            'Erro ao parar o canal.'
+        );
+    }
+};
+
+export const getActiveChannels = async (): Promise<string[]> => {
+    try {
+        const response = await api.get('/channels/status');
+        return response.data;
+    } catch (error) {
+        if (error instanceof ApiError) {
+            throw error;
+        }
+        throw new ApiError(
+            'Failed to get channel status',
+            'STATUS_ERROR',
+            500,
+            'Erro ao buscar status dos canais.'
+        );
+    }
+};
+
 export default api;
 
 

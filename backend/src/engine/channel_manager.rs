@@ -87,6 +87,30 @@ impl ChannelManager {
         self.senders.clone()
     }
 
+    pub fn get_active_channel_ids(&self) -> Vec<Uuid> {
+        self.channels.lock().unwrap().keys().cloned().collect()
+    }
+
+    pub async fn stop_channel(&self, channel_id: Uuid) -> anyhow::Result<()> {
+        let handle = {
+            let mut channels = self.channels.lock().unwrap();
+            channels.remove(&channel_id)
+        };
+
+        if let Some(handle) = handle {
+            tracing::info!("Stopping channel: {}", channel_id);
+            handle.abort();
+            
+            // Remove sender
+            self.senders.lock().unwrap().remove(&channel_id);
+            
+            self.add_log("INFO", format!("Channel {} stopped", channel_id), Some(channel_id));
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("Channel {} not running", channel_id))
+        }
+    }
+
     pub async fn start_channel(&self, channel: Channel, frontend_schema: Option<serde_json::Value>) -> anyhow::Result<()> {
         let channel_id = channel.id;
         tracing::info!("Starting channel: {} ({})", channel.name, channel_id);
@@ -710,13 +734,25 @@ impl ChannelManager {
         tokio::select! {
             _ = shutdown_rx.recv() => {
                 tracing::info!("Channel {} shutting down (signal received)...", channel_name);
-                // 1. Abort listener (stops accepting new connections)
+                // 1. Abort listener immediately
                 listener_handle.abort();
                 
-                // 2. Wait for processor to drain
-                match processor_handle.await {
-                    Ok(_) => tracing::info!("Channel {} processor drained.", channel_name),
-                    Err(e) => tracing::warn!("Channel {} processor join error: {}", channel_name, e),
+                // 2. Clear senders for this channel locally if possible 
+                // (Already handled globally by shutdown_all, but good for local stop_channel)
+
+                // 3. Wait for processor to drain with a timeout
+                let processor_drain = async {
+                    match processor_handle.await {
+                        Ok(_) => tracing::info!("Channel {} processor drained.", channel_name),
+                        Err(e) => tracing::warn!("Channel {} processor join error: {}", channel_name, e),
+                    }
+                };
+
+                tokio::select! {
+                    _ = processor_drain => {},
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(5)) => {
+                        tracing::warn!("Channel {} drain timed out, stopping anyway.", channel_name);
+                    }
                 }
             },
             res = &mut listener_handle => {
@@ -724,6 +760,7 @@ impl ChannelManager {
                    Ok(_) => tracing::warn!("Channel {} listener exited unexpectedly", channel_name),
                    Err(e) => tracing::error!("Channel {} listener task failed: {}", channel_name, e),
                 }
+                processor_handle.abort();
             },
             res = &mut processor_handle => {
                  match res {
@@ -876,9 +913,12 @@ impl ChannelManager {
         
         for (id, handle) in handles {
             tracing::info!("Waiting for channel {} to shutdown...", id);
-            if let Err(e) = handle.await {
-                tracing::error!("Error joining channel {}: {}", id, e);
-            }
+            
+            // Add a timeout for each channel join to prevent total system hang
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(3),
+                handle
+            ).await;
         }
         
         tracing::info!("All channels shutdown gracefully.");
