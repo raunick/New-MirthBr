@@ -1,174 +1,136 @@
-# MirthBR - Engine de Integração em Rust
+# MirthBR - Healthcare Integration Engine
 
 <p align="center">
   <img src="frontend/public/logo.png" alt="MirthBR Logo" width="120" />
 </p>
 
-Uma **engine de integração para saúde** de alta performance (alternativa ao Mirth Connect) construída com **Rust** (Backend) e **Next.js/React Flow** (Frontend). Projetada para processar mensagens HL7, FHIR e formatos personalizados com um editor visual baseado em fluxos.
+<p align="center">
+  <strong>High-performance healthcare integration engine built with Rust & React</strong>
+</p>
 
 <p align="center">
-  <img src="frontend/public/mirthbr-infografico.png" alt="Infográfico MirthBR" width="100%" />
+  <a href="#features">Features</a> •
+  <a href="#quick-start">Quick Start</a> •
+  <a href="#architecture">Architecture</a> •
+  <a href="#api-reference">API</a> •
+  <a href="#contributing">Contributing</a>
 </p>
 
 ---
 
-## 🚀 Funcionalidades
+## Overview
 
-### Editor Visual de Fluxos
-- **13+ Tipos de Nós**: Origens (Sources), Processadores e Destinos para criar fluxos de integração completos.
-- **Edição Inline**: Edite propriedades dos nós diretamente no canvas (portas, caminhos, URLs, etc.).
-- **Arrastar e Soltar**: Interface intuitiva impulsionada pelo React Flow.
-- **Logs em Tempo Real**: Monitore o processamento de mensagens e erros no visualizador de logs integrado.
+**MirthBR** is a modern, high-performance alternative to Mirth Connect, built from the ground up with **Rust** (backend) and **Next.js/React Flow** (frontend). Designed for healthcare integration workflows, it processes HL7, FHIR, and custom message formats through an intuitive visual flow editor.
 
-### Capacidades de Processamento
-- **Parse de HL7 v2**: Conversão automática de mensagens HL7 para JSON.
-- **Scripting Lua**: Escreva lógica de transformação personalizada com acesso total aos módulos `json`, `hl7` e logging.
-- **Mapeamento de Campos**: Mapeamento visual campo-a-campo entre formatos.
-- **Roteamento de Conteúdo**: Roteie mensagens para diferentes destinos com base em condições.
+<p align="center">
+  <img src="frontend/public/mirthbr-infografico.png" alt="MirthBR Infographic" width="100%" />
+</p>
+
+---
+
+## ✨ Features
+
+### Visual Flow Editor
+- **13+ Node Types**: Sources, Processors, and Destinations for complete integration flows
+- **Inline Editing**: Edit node properties directly on canvas (ports, paths, URLs)
+- **Drag & Drop**: Intuitive interface powered by React Flow
+- **Real-time Logs**: Monitor message processing and errors in the integrated log viewer
+- **Test Node**: Built-in testing with HTTP request capabilities and pipeline injection
+
+### Message Processing
+- **HL7 v2 Parsing**: Automatic HL7 to JSON conversion
+- **Lua Scripting**: Custom transformation logic with full access to `json`, `hl7`, and `log` modules
+- **Field Mapping**: Visual field-to-field mapping between formats
+- **Content Routing**: Route messages to different destinations based on conditions
+- **MLLP Protocol**: Full support for HL7 MLLP framing with state machine-based reassembly
+
+### Reliability & Persistence
+- **Disk Persistence**: All messages saved to SQLite *before* processing, ensuring zero data loss
+- **Dead Letter Queue (DLQ)**: Failed messages automatically routed to configurable error destination
+- **Auto-Recovery**: System automatically recovers and processes pending messages after restarts
+- **Automatic Retry**: Failed messages automatically retried with exponential backoff (1min, 2min, 4min...)
+- **Message Deduplication**: Identical messages detected and ignored (24-hour TTL, SHA-based hashing)
+
+### Real-time Monitoring
+- **WebSocket Metrics**: `/ws/metrics` streams PROCESSING, SENT, ERROR events in real-time
+- **Interactive Dashboard**: Metrics panel displays live counters and event feed
+- **Per-Channel Stats**: View processed/sent/errors per channel instantly
+- **Messages Dashboard**: Visual interface to list, filter, and retry failed messages
+
+### Channel Management
+- **Start/Stop Control**: Start and stop channels via API and UI
+- **Port Conflict Detection**: Automatic detection with clear error feedback
+- **Backend-Only Viewer**: Inspect channels defined via code/static configuration
+- **Deploy Node Feedback**: Visual status indicators for deployment state
+
+### Security
+- **Lua Sandboxing**: Secure script execution isolated from the operating system
+- **Robust Authentication**: Brute-force protection, rate limiting, secure password hashing
+- **Secure API**: Strict header validation and restrictive CORS
+- **TLS/HTTPS**: Full TLS support for Admin API and TCP/MLLP listeners
 
 ### Performance
-- **Runtime Assíncrono**: Construído sobre o runtime Tokio do Rust para I/O não-bloqueante de alto throughput.
-- **Canais Concorrentes**: Execute múltiplos canais de integração simultaneamente.
-- **Baixa Latência**: Processamento de mensagens em sub-milissegundos.
-
-### Confiabilidade e Persistência (NOVO)
-- **Persistência em Disco**: Todas as mensagens são salvas em SQLite *antes* do processamento, garantindo zero perda de dados.
-- **Dead Letter Queue (DLQ)**: Mensagens com erro são roteadas automaticamente para um destino de erro configurável.
-- **Auto-Recuperação**: O sistema recupera e processa automaticamente mensagens pendentes após reinicializações.
-- **Painel de Controle**: Interface visual para listar, filtrar e reprocessar mensagens falhas.
-
-### Segurança e Confiabilidade
-- **Sandboxing Lua**: Execução segura de scripts isolados do sistema operacional.
-- **Autenticação Robusta**: Proteção contra força bruta, rate limiting e hashing seguro de senhas.
-- **API Segura**: Validação estrita de headers e CORS restritivo.
-
-### Respostas Síncronas e Feedback de Erros (NOVO)
-- **Feedback Imediato**: O HTTP Listener agora espera o processamento completar antes de responder, retornando o status real da operação.
-- **Propagação de Erros Lua**: `log.error()` em scripts Lua agora **interrompe o pipeline** e retorna a mensagem de erro ao cliente HTTP com status `400 Bad Request`.
-- **Mensagens de Erro Detalhadas**: Erros de validação (ex: "ID do paciente (PID-3) é obrigatório") são retornados diretamente ao cliente.
-- **Logs Otimizados**: O warning de API key em desenvolvimento agora aparece apenas uma vez na inicialização.
-
-### Retry Automático (NOVO)
-- **Recuperação Automática**: Mensagens com erro são automaticamente reprocessadas com **backoff exponencial** (1min, 2min, 4min...).
-- **Configurável por Canal**: Defina `max_retries` por canal para controlar quantas tentativas serão feitas.
-- **RetryWorker**: Worker em background verifica mensagens com erro a cada 30 segundos e as reenvia ao pipeline.
-- **Status Tracking**: Acompanhe o `retry_count` de cada mensagem no banco de dados.
-
-### Deduplicação de Mensagens (NOVO)
-- **Prevenção de Duplicatas**: Mensagens idênticas são automaticamente detectadas e ignoradas.
-- **Hash de Conteúdo**: Baseado em hash SHA do conteúdo da mensagem por canal.
-- **TTL de 24 Horas**: Entradas expiram após 24h, permitindo reprocessamento posterior.
-- **CleanupWorker**: Limpeza automática de entradas expiradas a cada hora.
-
-### Métricas em Tempo Real (NOVO)
-- **WebSocket Live**: Endpoint `/ws/metrics` transmite eventos PROCESSING, SENT, ERROR em tempo real.
-- **Dashboard Interativo**: Painel "Metrics" no frontend exibe contadores e feed ao vivo.
-- **Estatísticas por Canal**: Visualize processed/sent/errors por canal instantaneamente.
+- **Async Runtime**: Built on Tokio for non-blocking high-throughput I/O
+- **Concurrent Channels**: Run multiple integration channels simultaneously
+- **Low Latency**: Sub-millisecond message processing
+- **Graceful Shutdown**: Messages in-flight are processed before termination
 
 ---
 
-## 📦 Tipos de Nós Disponíveis
+## 📦 Available Nodes
 
-### Origens / Sources (4)
-| Nó | Descrição | Campos Editáveis |
+### Sources (4)
+| Node | Description | Editable Fields |
 |------|-------------|-----------------|
-| **HTTP Listener** | Recebe requisições HTTP/REST | Port, Path |
-| **TCP Listener** | Aceita conexões TCP puras | Port |
-| **File Reader** | Monitora arquivos de um diretório | Path, Pattern |
-| **Database Poller** | Consulta banco de dados em intervalo | Interval, SQL Query |
+| **HTTP Listener** | Receives HTTP/REST requests | Port, Path |
+| **TCP Listener** | Accepts pure TCP connections | Port |
+| **File Reader** | Monitors files from a directory | Path, Pattern |
+| **Database Poller** | Queries database at intervals | Interval, SQL Query |
 
-### Processadores / Processors (5)
-| Nó | Descrição | Campos Editáveis |
+### Processors (5)
+| Node | Description | Editable Fields |
 |------|-------------|-----------------|
-| **HL7 Parser** | Converte HL7 v2 ↔ JSON/FHIR | Input Format, Output Format |
-| **Lua Script** | Código de transformação personalizado | Label, Code (modal) |
-| **Field Mapper** | Mapeia campos origem → destino | Lista de Mapeamentos |
-| **Message Filter** | Filtra por condição | Condition (modal) |
-| **Content Router** | Roteia para múltiplas saídas | Lista de Rotas |
+| **HL7 Parser** | Converts HL7 v2 ↔ JSON/FHIR | Input Format, Output Format |
+| **Lua Script** | Custom transformation code | Label, Code (modal) |
+| **Field Mapper** | Maps source → destination fields | Mappings List |
+| **Message Filter** | Filters by condition | Condition (modal) |
+| **Content Router** | Routes to multiple outputs | Routes List |
 
-### Destinos / Destinations (4)
-| Nó | Descrição | Campos Editáveis |
+### Destinations (4)
+| Node | Description | Editable Fields |
 |------|-------------|-----------------|
-| **File Writer** | Escreve no sistema de arquivos | Directory, Filename Pattern |
-| **HTTP Sender** | Envia requisições HTTP | URL, Method |
-| **Database Writer** | Insere/Atualiza banco de dados | Table, Mode, Query |
-| **TCP Sender** | Envia via socket TCP | Host, Port |
+| **File Writer** | Writes to filesystem | Directory, Filename Pattern |
+| **HTTP Sender** | Sends HTTP requests | URL, Method |
+| **Database Writer** | Inserts/Updates database | Table, Mode, Query |
+| **TCP Sender** | Sends via TCP socket (MLLP) | Host, Port |
+
+### Utility Nodes
+| Node | Description |
+|------|-------------|
+| **Deploy Node** | Deploys channel to backend with status feedback |
+| **Test Node** | Tests deployed channels with HTTP requests or pipeline injection |
+| **Text Node** | Documentation and annotations |
 
 ---
 
-## 🔒 Segurança e Arquitetura
+## 🚀 Quick Start
 
-O MirthBR foi atualizado com foco em **Security by Design** e modernização arquitetural:
+### Prerequisites
+- **Rust** 1.70+ ([Install](https://www.rust-lang.org/tools/install))
+- **Node.js** 18+ ([Install](https://nodejs.org/))
 
-### Melhorias de Segurança
-- **Ambiente Lua Seguro (Sandboxed)**: Scripts de usuário rodam em ambiente isolado, prevenindo acesso não autorizado a arquivos ou rede fora do escopo permitido.
-- **Autenticação Completa**: Fluxo de login com gestão de sessão segura, *hashing* de senhas com sal e políticas de complexidade.
-- **Proteção de API**: Implementação de *Rate Limiting*, sanitização de logs/inputs e headers de segurança HTTP (OWASP recommendations).
-
-### Evolução Arquitetural
-- **Estado Global com Zustand**: O Frontend agora utiliza **Zustand** para gerenciamento de estado, garantindo maior performance e previsibilidade na manipulação de fluxos complexos.
-- **Test Node Avançado**: Nova ferramenta de teste que permite tanto injetar mensagens diretamente no pipeline interno quanto realizar requisições HTTP externas para validar endpoints reais.
-- **Viewer de Canais Backend**: Interface dedicada para inspeção de canais "Backend-Only" (definidos via código/configuração estática).
-
-### MLLP Robusto (Fase 1)
-- **State Machine Completa**: `MllpFrameAccumulator` com estados `WaitingStart`, `Accumulating`, `Complete` para remontagem de mensagens fragmentadas.
-- **Timeout de Sessão**: Sessões MLLP expiram após 30s de inatividade (configurável).
-- **ACK Completo**: Resposta ACK inclui MSH-9 e MSH-10 conforme especificação HL7.
-- **Suporte a Mensagens Grandes**: Mensagens HL7 de até 50KB+ fragmentadas são corretamente remontadas.
-
-### TCP Sender Destination (Fase 1)
-- **MLLP Framing**: Mensagens são automaticamente envolvidas com 0x0B/0x1C/0x0D para envio.
-- **ACK Reception**: Aguarda e valida ACK do servidor remoto.
-- **Timeout Configurável**: Evita bloqueios em servidores não responsivos.
-
-### Graceful Shutdown (Fase 1)
-- **Sinal de Broadcast**: Canal `tokio::sync::broadcast` para coordenar shutdown.
-- **Drain de Mensagens**: Mensagens em-flight são processadas antes do encerramento.
-- **Hook SIGTERM**: `kill -15 PID` espera mensagens finalizarem.
-
-### TLS/HTTPS (Fase 1)
-- **HTTPS para Admin API**: Configure via `TLS_CERT_PATH` e `TLS_KEY_PATH`.
-- **TLS para TCP/MLLP Listeners**: Suporte a certificados por canal.
-- **Self-Signed Certificates**: Documentação para geração com OpenSSL incluída.
-
-### Database Connectors (Fase 2)
-- **Database Poller Source**: Consulta periódica em Postgres, MySQL ou SQLite.
-- **Database Writer Destination**: INSERT/UPDATE com query configurável.
-- **Connection Pooling**: Gerenciamento eficiente de conexões via `sqlx`.
-
-### File Connectors (Fase 2)
-- **File Reader Source**: Polling de diretório com glob patterns (ex: `*.hl7`).
-- **File Writer Avançado**: Modo append, encoding base64, templates de filename (ex: `${timestamp}.json`).
-- **Auto-Rename**: Arquivos processados são renomeados para `.processed`.
-
-### Processors Avançados (Fase 3)
-- **Mapper Processor**: Mapeamento JSON campo-a-campo com dot-notation.
-- **Filter Processor**: Filtro condicional baseado em Lua (retorna true/false).
-- **Lua Destination**: Execute scripts Lua personalizados como destino.
-
----
-
-## 🛠️ Pré-requisitos
-
-- **Rust** 1.70+: [Instalar Rust](https://www.rust-lang.org/tools/install)
-- **Node.js** 18+: [Instalar Node.js](https://nodejs.org/)
-
----
-
-## 🏁 Começando
-
-### 1. Inicie o Backend
+### 1. Start Backend
 
 ```bash
 cd backend
 cargo run
 ```
 
-O backend inicia:
-- **Servidor API**: `http://localhost:3001`
-- **Canal Hello World**: HTTP Listener na porta `8090` (implantado automaticamente)
+Backend starts:
+- **API Server**: `http://localhost:3001`
+- **Hello World Channel**: HTTP Listener on port `1234` (auto-deployed)
 
-### 2. Inicie o Frontend
+### 2. Start Frontend
 
 ```bash
 cd frontend
@@ -176,86 +138,87 @@ npm install
 npm run dev
 ```
 
-Abra [http://localhost:3000](http://localhost:3000) no seu navegador.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+**Default credentials:**
+- Username: `admin`
+- Password: `admin123`
+
+> ⚠️ **Change credentials in production!**
 
 ---
 
-## 📖 Guia de Uso
+## 📖 Usage Guide
 
-### Criando um Canal
+### Creating a Channel
 
-1. **Adicionar Origem**: Clique em um nó de origem (Source) na barra lateral (ex: HTTP Listener).
-2. **Configurar Inline**: Clique nos campos para editar (ex: mude a porta para `8080`).
-3. **Adicionar Processador**: Adicione um HL7 Parser ou Lua Script para transformar os dados.
-4. **Adicionar Destino**: Conecte a um File Writer ou HTTP Sender.
-5. **Implantar (Deploy)**: Clique no botão **Deploy Channel**.
+1. **Add Source**: Click a source node in the sidebar (e.g., HTTP Listener)
+2. **Configure Inline**: Click fields to edit (e.g., change port to `8080`)
+3. **Add Processor**: Add an HL7 Parser or Lua Script to transform data
+4. **Add Destination**: Connect to a File Writer or HTTP Sender
+5. **Deploy**: Click the **Deploy Channel** button
 
-### Testando com HL7
+### Testing with HL7
 
 ```bash
-# Envie uma mensagem HL7 para seu canal
 curl -X POST http://localhost:8080/api/messages -d 'MSH|^~\&|SENDER|FACILITY|RECEIVER|DEST|202312140800||ADT^A01|12345|P|2.3
 PID|||12345||DOE^JOHN||19800101|M'
 ```
 
-Verifique o arquivo de saída (ex: `./output/${timestamp}.json`) para ver o resultado processado.
+### Managing Messages (Dashboard)
 
-### Gerenciando Mensagens (Dashboard)
+1. **Access Panel**: Click **Messages** in sidebar or go to `/messages`
+2. **View**: See all messages with status (PENDING, PROCESSING, SENT, ERROR)
+3. **Retry**: Click **Retry** button on failed messages to reprocess
 
-1. **Acesse o Painel**: Clique em **Messages** na barra lateral ou vá para `/messages`.
-2. **Visualize**: Veja todas as mensagens com status (PENDING, PROCESSING, SENT, ERROR).
-3. **Reprocesse**: Clique no botão **Retry** em mensagens com erro para enviá-las novamente ao pipeline.
-
-### Configurando Dead Letter Queue (DLQ)
-
-1. No editor, clique no botão **Settings** (ícone de engrenagem).
-2. Selecione um nó de destino (ex: um File Writer) para ser o destino de erro.
-3. Mensagens que falharem no processamento serão enviadas para este destino.
-
-### Exemplos de Script Lua
+### Lua Script Examples
 
 ```lua
--- Acessar HL7 parseado como JSON
+-- Access parsed HL7 as JSON
 local data = json.decode(msg.content)
-log("Paciente: " .. data["PID"][5])
+log("Patient: " .. data["PID"][5])
 
--- Modificar e retornar
-data["processado"] = true
+-- Modify and return
+data["processed"] = true
 return json.encode(data)
 ```
 
 ```lua
--- Transformação simples
-return msg.content:upper()
+-- Error handling with log.error() - stops pipeline and returns error to client
+if not data["PID"] or not data["PID"][3] then
+    log.error("Patient ID (PID-3) is required")
+end
 ```
 
-### Módulos Lua Disponíveis
+### Available Lua Modules
 
-| Módulo | Funções | Descrição |
+| Module | Functions | Description |
 |--------|-----------|-------------|
-| `json` | `encode(val)`, `decode(str)` | Serialização JSON |
-| `hl7` | `parse(str)`, `to_json(str)` | Parsing de HL7 v2 |
-| `log` | `log(msg)` | Escreve nos logs do sistema |
+| `json` | `encode(val)`, `decode(str)` | JSON serialization |
+| `hl7` | `parse(str)`, `to_json(str)` | HL7 v2 parsing |
+| `log` | `log(msg)`, `log.error(msg)` | System logging (error stops pipeline) |
 
 ---
 
-## 🔌 Referência da API
+## 🔌 API Reference
 
-| Endpoint | Método | Descrição |
+| Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/api/channels` | POST | Implantar uma configuração de canal |
-| `/api/channels` | GET | Listar canais ativos |
-| `/api/logs` | GET | Obter entradas de log recentes |
-| `/api/health` | GET | Verificação de saúde (Health check) |
-| `/api/messages` | GET | Listar mensagens com filtros (status, channel_id) |
-| `/api/messages/:id/retry` | POST | Reprocessar manualmente uma mensagem com erro |
-| `/ws/metrics` | WebSocket | Stream de métricas em tempo real |
+| `/api/channels` | POST | Deploy a channel configuration |
+| `/api/channels` | GET | List active channels |
+| `/api/channels/:id/start` | POST | Start a channel |
+| `/api/channels/:id/stop` | POST | Stop a channel |
+| `/api/logs` | GET | Get recent log entries |
+| `/api/health` | GET | Health check |
+| `/api/messages` | GET | List messages with filters (status, channel_id) |
+| `/api/messages/:id/retry` | POST | Manually retry a failed message |
+| `/ws/metrics` | WebSocket | Real-time metrics stream |
 
-### Payload de Deploy de Canal
+### Channel Deploy Payload
 
 ```json
 {
-  "name": "Meu Canal",
+  "name": "My Channel",
   "enabled": true,
   "source": {
     "type": "http_listener",
@@ -272,7 +235,7 @@ return msg.content:upper()
   "destinations": [
     {
       "id": "dest-1",
-      "name": "Saída de Arquivo",
+      "name": "File Output",
       "type": "file_writer",
       "config": { "path": "./output", "filename": "${timestamp}.json" }
     }
@@ -282,73 +245,85 @@ return msg.content:upper()
 
 ---
 
-## 📂 Estrutura do Projeto
+## 🏗️ Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     Frontend (Next.js)                       │
+│  ┌─────────┐  ┌──────────────┐  ┌───────────────────────┐  │
+│  │ Sidebar │  │  FlowCanvas  │  │  Deploy/Test/Metrics  │  │
+│  └─────────┘  └──────────────┘  └───────────────────────┘  │
+└────────────────────────┬────────────────────────────────────┘
+                         │ REST API + WebSocket
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    Backend (Rust/Axum)                       │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │                   ChannelManager                       │  │
+│  │  ┌──────────┐  ┌────────────┐  ┌──────────────────┐   │  │
+│  │  │ Listener │→ │ Processors │→ │   Destinations   │   │  │
+│  │  │(HTTP/TCP)│  │ (HL7, Lua) │  │(File, HTTP, TCP) │   │  │
+│  │  └──────────┘  └────────────┘  └──────────────────┘   │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                              │                               │
+│  ┌───────────────────────────┼───────────────────────────┐  │
+│  │   SQLite Persistence │ Retry Worker │ Dedup Cache     │  │
+│  └───────────────────────────┴───────────────────────────┘  │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │              Lua Runtime (mlua) - Sandboxed            │  │
+│  │   Modules: json, hl7, log                              │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 📂 Project Structure
 
 ```
 mirthbr/
-├── backend/                 # Servidor Rust Axum
+├── backend/                 # Rust Axum Server
 │   ├── src/
-│   │   ├── api/            # Handlers da API REST
-│   │   ├── engine/         # Gerenciador de canais, listeners, processadores
-│   │   ├── lua_helpers/    # Módulos json, hl7, logging para Lua
-│   │   └── storage/        # Modelos e persistência
+│   │   ├── api/            # REST API handlers
+│   │   ├── engine/         # Channel manager, listeners, processors
+│   │   ├── lua_helpers/    # json, hl7, logging modules for Lua
+│   │   ├── storage/        # SQLite persistence models
+│   │   └── utils/          # Utilities (dedup, retry)
 │   └── Cargo.toml
-├── frontend/                # Aplicação Next.js
+├── frontend/                # Next.js Application
 │   ├── src/
-│   │   ├── app/            # Páginas e estilos globais
+│   │   ├── app/            # Pages and global styles
 │   │   ├── components/
-│   │   │   ├── flow/       # FlowCanvas e componentes dos 13 nós
+│   │   │   ├── flow/       # FlowCanvas and 13+ node components
 │   │   │   ├── layout/     # Header, Sidebar
-│   │   │   └── editor/     # LuaEditorModal
-│   │   └── lib/            # Cliente API, flow-compiler
+│   │   │   └── editor/     # LuaEditorModal, SettingsModal
+│   │   ├── stores/         # Zustand state management (slices)
+│   │   └── lib/            # API client, flow-compiler
 │   └── package.json
+├── samples/                 # Sample workflows and HL7 messages
 └── README.md
 ```
 
 ---
 
-## 🧪 Arquitetura
+## 🤝 Contributing
 
-```
-┌─────────────────────────────────────────────────────────┐
-│                     Frontend (Next.js)                   │
-│  ┌─────────┐  ┌──────────────┐  ┌───────────────────┐  │
-│  │ Sidebar │  │  FlowCanvas  │  │  Deploy/Test UI   │  │
-│  └─────────┘  └──────────────┘  └───────────────────┘  │
-└────────────────────────┬────────────────────────────────┘
-                         │ REST API (JSON)
-                         ▼
-┌─────────────────────────────────────────────────────────┐
-│                   Backend (Rust/Axum)                    │
-│  ┌──────────────────────────────────────────────────┐  │
-│  │               ChannelManager                      │  │
-│  │  ┌──────────┐  ┌────────────┐  ┌──────────────┐  │  │
-│  │  │ Listener │→ │ Processors │→ │ Destinations │  │  │
-│  │  │ (HTTP)   │  │ (HL7, Lua) │  │ (File, HTTP) │  │  │
-│  │  └──────────┘  └────────────┘  └──────────────┘  │  │
-│  └──────────────────────────────────────────────────┘  │
-│                         │                               │
-│  ┌──────────────────────┴───────────────────────────┐  │
-│  │              Lua Runtime (mlua)                   │  │
-│  │   Modules: json, hl7, log                         │  │
-│  └──────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────┘
-```
----
+Contributions are welcome! Please open an issue or submit a pull request.
 
-### Confiabilidade e Recuperação (Roadmap)
-- **Guaranteed Delivery**: (Em breve) Sistema de filas persistentes para garantir zero perda de dados.
-- **Retry Policy**: Configuração de tentativas automáticas de reenvio para destinos offline.
-- **Smart ACKs**: Gestão inteligente de confirmações HL7 (AA/AE/AR).
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
 ---
 
-## 🤝 Contribuindo
+## 📄 License
 
-Contribuições são bem-venidas! Por favor, abra uma issue ou envie um pull request.
+MIT License - see [LICENSE](LICENSE) for details.
 
 ---
 
-## 📄 Licença
-
-Licença MIT - veja [LICENSE](LICENSE) para detalhes.
+<p align="center">
+  Made with ❤️ for Healthcare Integration
+</p>
