@@ -80,7 +80,7 @@ function buildSourceConfig(node: Node, nodes: Node[], edges: Edge[]): SourceConf
             return {
                 type: 'http_listener',
                 config: {
-                    port: Number(resolveConfigValue(node, 'port', 'config-port', nodes, edges)) || 8080,
+                    port: Number(resolveConfigValue(node, 'port', 'config-port', nodes, edges)) || 1234,
                     path: resolveConfigValue(node, 'path', 'config-path', nodes, edges),
                     cert_path: data.cert_path || undefined,
                     key_path: data.key_path || undefined
@@ -114,7 +114,7 @@ function buildSourceConfig(node: Node, nodes: Node[], edges: Edge[]): SourceConf
                 }
             };
         default:
-            return { type: 'http_listener', config: { port: 8080 } };
+            return { type: 'http_listener', config: { port: 1234 } };
     }
 }
 
@@ -180,7 +180,7 @@ export function exportToRust(nodes: Node[], edges: Edge[], channelName: string =
         id: channelId || crypto.randomUUID(),
         name: channelName,
         enabled: true,
-        source: { type: 'http_listener', config: { port: 8080 } },
+        source: { type: 'http_listener', config: { port: 1234 } },
         processors: [],
         destinations: [],
         max_retries: maxRetries

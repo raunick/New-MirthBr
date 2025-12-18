@@ -52,6 +52,8 @@ export interface FlowState {
     setRunning: (running: boolean) => void;
     stopCurrentChannel: () => Promise<void>;
     deployStatus: Record<string, 'initial' | 'loading' | 'success' | 'error' | 'stopped'>;
+    deployErrorMessage: string | null;
+    setDeployError: (message: string | null) => void;
     channelStatus: 'offline' | 'online';
     executeDeploy: (nodeId: string) => Promise<void>;
     toggleChannelStatus: (nodeId: string, status: 'online' | 'offline') => Promise<void>;

@@ -1,13 +1,13 @@
 import { StateCreator } from 'zustand';
 import { FlowState } from '../../types/store';
-import { deployChannel, testChannel as testChannelApi, getChannelStatus, startChannel, stopChannel } from '@/lib/api';
+import { deployChannel, testChannel as testChannelApi, startChannel, stopChannel } from '@/lib/api';
 
 export const createChannelSlice: StateCreator<FlowState, [], [], Pick<FlowState,
     'channelName' | 'channelId' | 'errorDestinationId' | 'maxRetries' |
-    'deployStatus' | 'channelStatus' | 'isRunning' |
+    'deployStatus' | 'channelStatus' | 'isRunning' | 'deployErrorMessage' |
     'setChannelName' | 'setChannelId' | 'setErrorDestinationId' |
     'setMaxRetries' | 'setRunning' | 'stopCurrentChannel' |
-    'executeDeploy' | 'toggleChannelStatus' | 'testChannel'
+    'executeDeploy' | 'toggleChannelStatus' | 'testChannel' | 'setDeployError'
 >> = (set, get) => ({
 
     channelName: 'My Channel',
@@ -18,6 +18,7 @@ export const createChannelSlice: StateCreator<FlowState, [], [], Pick<FlowState,
     deployStatus: {},
     channelStatus: 'offline',
     isRunning: false,
+    deployErrorMessage: null,
 
     setChannelName: (name) => set({ channelName: name }),
     setChannelId: (id) => set({ channelId: id }),
@@ -25,6 +26,8 @@ export const createChannelSlice: StateCreator<FlowState, [], [], Pick<FlowState,
     setMaxRetries: (count) => set({ maxRetries: count }),
 
     setRunning: (running) => set({ isRunning: running }),
+
+    setDeployError: (message) => set({ deployErrorMessage: message }),
 
     stopCurrentChannel: async () => {
         const { channelId } = get();
@@ -73,15 +76,18 @@ export const createChannelSlice: StateCreator<FlowState, [], [], Pick<FlowState,
             set((state) => ({
                 deployStatus: { ...state.deployStatus, [nodeId]: 'success' },
                 channelStatus: 'online',
-                isRunning: true
+                isRunning: true,
+                deployErrorMessage: null // Clear any previous error
             }));
 
             get().saveFlow();
 
-        } catch (e) {
+        } catch (e: any) {
+            const errorMessage = e?.message || e?.toString() || 'Unknown deployment error';
             console.error("Deploy failed", e);
             set((state) => ({
-                deployStatus: { ...state.deployStatus, [nodeId]: 'error' }
+                deployStatus: { ...state.deployStatus, [nodeId]: 'error' },
+                deployErrorMessage: errorMessage
             }));
         }
     },
@@ -104,10 +110,12 @@ export const createChannelSlice: StateCreator<FlowState, [], [], Pick<FlowState,
             set((state) => ({
                 deployStatus: { ...state.deployStatus, [nodeId]: status === 'online' ? 'success' : 'stopped' }
             }));
-        } catch (e) {
+        } catch (e: any) {
+            const errorMessage = e?.message || e?.toString() || 'Failed to change channel status';
             console.error("Toggle status failed", e);
             set((state) => ({
-                deployStatus: { ...state.deployStatus, [nodeId]: 'error' }
+                deployStatus: { ...state.deployStatus, [nodeId]: 'error' },
+                deployErrorMessage: errorMessage
             }));
         }
     },

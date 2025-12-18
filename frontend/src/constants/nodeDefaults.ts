@@ -1,7 +1,7 @@
 import { NodeData } from '@/types/node';
 
 export const nodeDefaults: Record<string, NodeData> = {
-    httpListener: { label: 'HTTP Listener', port: 8080, path: '/' },
+    httpListener: { label: 'HTTP Listener', port: 1234, path: '/' },
     tcpListener: { label: 'TCP Listener', port: 9090 },
     fileReader: { label: 'File Reader', path: '/data/input', pattern: '*.txt' },
     databasePoller: { label: 'Database Poller', query: 'SELECT * FROM messages', interval: 60 },
@@ -21,7 +21,7 @@ export const nodeDefaults: Record<string, NodeData> = {
     deployNode: { label: 'Channel Terminal' },
     // Utility Nodes
     ipNode: { label: 'IP Address', ip: '127.0.0.1', subnet: '255.255.255.0' },
-    portNode: { label: 'Port', port: 8080, protocol: 'TCP' },
+    portNode: { label: 'Port', port: 1234, protocol: 'TCP' },
     textNode: { label: 'Text', text: '', isTemplate: false },
     variableNode: { label: 'Variables', variables: [] },
     commentNode: { label: 'Comment', text: 'Add notes here...', color: '#fef3c7' },
