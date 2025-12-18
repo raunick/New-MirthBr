@@ -1,10 +1,13 @@
-import React, { memo, useState, useCallback, useEffect } from 'react';
+import React, { memo, useState, useCallback, useEffect, useMemo } from 'react';
 import { Handle, Position, useNodeId } from 'reactflow';
-import { PlayCircle, ChevronDown, ChevronRight, Save, Send, AlertCircle, CheckCircle } from 'lucide-react';
+import { PlayCircle, ChevronDown, ChevronRight, Send, HelpCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { testTcp } from '@/lib/api';
 import axios from 'axios';
 import { useFlowStore } from '@/stores/useFlowStore';
+import BaseNode from './BaseNode';
+import { useConfigEdge } from '@/hooks/useConfigEdge';
+import InlineEdit from '../InlineEdit';
 
 const PAYLOAD_PRESETS: Record<string, string> = {
     hl7: `MSH|^~\\&|LISS|OMNI|RAPP|MCM|202305041005||ORM^O01|202305041005|P|2.3
@@ -26,87 +29,96 @@ interface TestNodeData {
     tcpTimeout: string;
     payloadType: string;
     payload: string;
+    [key: string]: any;
 }
 
 /**
  * TestNode - Complex node for testing workflows
- * Refactored to use store actions (testChannel, updateNodeData) directly.
- * Optimized selectors to prevent re-renders.
+ * Refactored to use BaseNode and unified state management
  */
 const TestNode = ({ data }: { data: TestNodeData }) => {
     const nodeId = useNodeId();
     const updateNodeData = useFlowStore((state) => state.updateNodeData);
     const testChannel = useFlowStore((state) => state.testChannel);
 
+    // Local UI state
     const [expanded, setExpanded] = useState(false);
-    const [sendMode, setSendMode] = useState<'inject' | 'http' | 'tcp'>(data.sendMode || 'inject');
-    const [tcpHost, setTcpHost] = useState(data.tcpHost || 'localhost');
-    const [tcpPort, setTcpPort] = useState(data.tcpPort || '6500');
-    const [tcpTimeout, setTcpTimeout] = useState(data.tcpTimeout || '30');
-    const [httpMethod, setHttpMethod] = useState('POST');
+    const [loading, setLoading] = useState(false);
+    const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
+    const [response, setResponse] = useState<string | null>(null);
     const [httpUrl, setHttpUrl] = useState('http://localhost:8080/api/messages');
+    const [httpMethod, setHttpMethod] = useState('POST');
 
-    // Stable selector pattern for URL config
+    // Derived state from data (with defaults)
+    const sendMode = data.sendMode || 'inject';
+    const payloadType = data.payloadType || 'hl7';
+    const payload = data.payload || PAYLOAD_PRESETS.hl7;
+    const tcpHost = data.tcpHost || 'localhost';
+    const tcpPort = data.tcpPort || '6500';
+    const tcpTimeout = data.tcpTimeout || '30';
+
+    const handleChange = useCallback((field: string, value: any) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
+
+    // Use hook to sync dynamic URL
+    const handleUrlChange = useCallback((field: string, val: any) => {
+        if (val !== httpUrl) setHttpUrl(val);
+    }, [httpUrl]);
+
+    // We can't strictly use useConfigEdge for complex URL parsing logic logic 1:1 without modifying the hook
+    // but we can try to simplify. The original logic handled ipNode, portNode, textNode distinctions.
+    // Ideally we'd move that logic to a helper or just keep it here but using the stable edges selector.
+    // For now, let's keep the URL logic locally but optimized.
+
     const edges = useFlowStore((state) => state.edges);
     const nodes = useFlowStore((state) => state.nodes);
 
-    const urlEdge = React.useMemo(() =>
+    const urlEdge = useMemo(() =>
         nodeId ? edges.find(e => e.target === nodeId && e.targetHandle === 'config-url') : undefined,
         [edges, nodeId]);
 
-    const sourceNode = React.useMemo(() =>
-        urlEdge ? nodes.find(n => n.id === urlEdge.source) : undefined,
-        [nodes, urlEdge]);
-
-    // Update HTTP URL based on connected node
     useEffect(() => {
+        if (!urlEdge) return;
+        const sourceNode = nodes.find(n => n.id === urlEdge.source);
         if (!sourceNode) return;
 
         let newUrl = httpUrl;
         try {
             let currentStr = httpUrl.startsWith('http') ? httpUrl : `http://${httpUrl}`;
-            const urlObj = new URL(currentStr);
 
+            // Handle different node types logic
             if (sourceNode.type === 'ipNode' && sourceNode.data.ip) {
+                const urlObj = new URL(currentStr);
                 urlObj.hostname = sourceNode.data.ip;
                 newUrl = urlObj.toString();
             } else if (sourceNode.type === 'portNode' && sourceNode.data.port) {
+                const urlObj = new URL(currentStr);
                 urlObj.port = sourceNode.data.port.toString();
                 newUrl = urlObj.toString();
-            } else if (sourceNode.type === 'textNode') {
-                newUrl = sourceNode.data.value ?? sourceNode.data.text ?? '';
+            } else {
+                // Default to text value replacement
+                const val = sourceNode.data.value ?? sourceNode.data.text;
+                if (val) newUrl = val;
             }
         } catch (e) {
-            if (sourceNode.type === 'textNode') {
-                newUrl = sourceNode.data.value ?? sourceNode.data.text ?? '';
-            }
+            const val = sourceNode.data.value ?? sourceNode.data.text;
+            if (val) newUrl = val;
         }
 
         if (newUrl !== httpUrl) {
             setHttpUrl(newUrl);
         }
-    }, [sourceNode]); // Only re-run if sourceNode changes
+    }, [urlEdge, nodes, httpUrl]);
 
-    const [payloadType, setPayloadType] = useState(data.payloadType || 'hl7');
-    const [payload, setPayload] = useState(data.payload || PAYLOAD_PRESETS.hl7);
-    const [loading, setLoading] = useState(false);
-    const [status, setStatus] = useState<'idle' | 'success' | 'error'>('idle');
-    const [response, setResponse] = useState<string | null>(null);
-
-    // Sync internal state with ReactFlow data
-    useEffect(() => {
-        if (!nodeId) return;
-        updateNodeData(nodeId, 'payloadType', payloadType);
-        updateNodeData(nodeId, 'payload', payload);
-        updateNodeData(nodeId, 'sendMode', sendMode);
-        updateNodeData(nodeId, 'tcpHost', tcpHost);
-        updateNodeData(nodeId, 'tcpPort', tcpPort);
-        updateNodeData(nodeId, 'tcpTimeout', tcpTimeout);
-    }, [nodeId, payloadType, payload, sendMode, tcpHost, tcpPort, tcpTimeout, updateNodeData]);
 
     const handleTypeChange = (value: string) => {
-        setPayloadType(value);
-        setPayload(PAYLOAD_PRESETS[value] || '');
+        handleChange('payloadType', value);
+        // Only update payload if it matches the current preset for previous type (avoid overwriting user work)
+        // Or just overwrite? The original logic overwrote it.
+        handleChange('payload', PAYLOAD_PRESETS[value] || '');
     };
 
     const handleSend = async (e: React.MouseEvent) => {
@@ -117,33 +129,18 @@ const TestNode = ({ data }: { data: TestNodeData }) => {
 
         try {
             if (sendMode === 'inject') {
-                // Internal Injection Mode
-                try {
-                    // Use store action to test channel
-                    if (nodeId) {
-                        const result = await testChannel(payloadType, payload);
-                        // Verify result? testChannel currently returns void/Promise<void> or similar. 
-                        // Looking at store: `testChannel: (nodeId, type, content) => Promise<void>` and it calls API.
-                        // But wait, the previous code expected a result or just resolved.
-                        // The store's testChannel probably throws if error, or handles it.
-                        // Actually, I should verify what testChannel returns in `useFlowStore.ts`.
-                        // Assuming it returns success or throws.
-                        setStatus('success');
-                        setResponse("Message injected successfully");
-                    }
-                } catch (error: any) {
-                    setStatus('error');
-                    setResponse(error.message || "Failed to inject message");
+                if (nodeId) {
+                    await testChannel(payloadType, payload);
+                    setStatus('success');
+                    setResponse("Message injected successfully");
                 }
             } else if (sendMode === 'tcp') {
-                // HL7 TCP Sender Mode
                 const res = await testTcp(
                     tcpHost,
                     parseInt(tcpPort),
                     payload,
                     parseInt(tcpTimeout)
                 );
-
                 if (res.success) {
                     setStatus('success');
                     setResponse(`ACK Received:\n${res.response}\n\n(Raw: ${JSON.stringify(res.raw_response)})`);
@@ -152,7 +149,6 @@ const TestNode = ({ data }: { data: TestNodeData }) => {
                     setResponse(`Error: ${res.error}\nMessage: ${res.message || ''}`);
                 }
             } else {
-                // Real HTTP Request Mode
                 const res = await axios({
                     method: httpMethod,
                     url: httpUrl,
@@ -163,7 +159,6 @@ const TestNode = ({ data }: { data: TestNodeData }) => {
                 setResponse(`Status: ${res.status}\n${typeof res.data === 'object' ? JSON.stringify(res.data, null, 2) : res.data}`);
             }
         } catch (err: any) {
-            console.error(err);
             setStatus('error');
             setResponse(err.message || 'Failed to send');
         } finally {
@@ -171,151 +166,124 @@ const TestNode = ({ data }: { data: TestNodeData }) => {
         }
     };
 
-    const handleToggleExpand = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        setExpanded(!expanded);
-    };
-
     return (
-        <div className={`flow-node test-node w-[300px] transition-all duration-300 ${expanded ? 'z-50' : 'z-0'}`}>
-            <div className="flex items-center justify-between px-4 py-3 cursor-pointer" onClick={handleToggleExpand}>
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-[var(--primary)]/20 flex items-center justify-center">
-                        <PlayCircle size={20} className="text-[var(--primary)]" />
-                    </div>
-                    <div>
-                        <div className="text-sm font-semibold text-[var(--foreground)]">
-                            {data.label || 'Test Node'}
-                        </div>
-                        <div className="text-xs text-[var(--foreground-muted)]">Manual Trigger</div>
-                    </div>
-                </div>
-                <div className="flex items-center gap-2">
-                    {status === 'success' && <CheckCircle size={14} className="text-[var(--success)]" />}
-                    {status === 'error' && <AlertCircle size={14} className="text-[var(--error)]" />}
-                    {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                </div>
-            </div>
+        <BaseNode
+            category="utility" // Or custom 'test' category? Standard base uses basic categories.
+            // But we can override color.
+            status={loading ? 'loading' : status}
+            icon={<PlayCircle size={20} />}
+            label={data.label || 'Test Node'}
+            subtitle={sendMode === 'inject' ? 'Internal Injection' : sendMode === 'tcp' ? 'TCP Sender' : 'HTTP Request'}
+            className={`w-[300px] transition-all duration-300 ${expanded ? 'z-50' : 'z-0'}`}
+            style={{ '--node-category-color': 'var(--primary)' } as React.CSSProperties}
+        >
+            <div className="space-y-3">
+                {/* Expand Toggle Header inside Content since BaseNode handles main header */}
+                <button
+                    onClick={() => setExpanded(!expanded)}
+                    className="w-full flex items-center justify-between text-xs text-[var(--foreground-muted)] hover:bg-[var(--glass-bg)] p-1 rounded"
+                >
+                    <span>{expanded ? 'Hide Configuration' : 'Show Configuration'}</span>
+                    {expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </button>
 
-            {expanded && (
-                <div className="px-4 pb-4 animate-in slide-in-from-top-2 fade-in duration-200">
-                    <div className="space-y-3 pt-2 border-t border-[var(--glass-border)]">
-
+                {expanded && (
+                    <div className="space-y-3 animate-in slide-in-from-top-2 fade-in duration-200">
                         {/* Send Mode Toggle */}
                         <div className="flex bg-[var(--background)] p-1 rounded border border-[var(--glass-border)]">
-                            <button
-                                onClick={() => setSendMode('inject')}
-                                className={`flex-1 text-[10px] py-1 rounded transition-colors ${sendMode === 'inject' ? 'bg-[var(--primary)]/20 text-[var(--primary)] font-bold' : 'text-[var(--foreground-muted)]'}`}
-                            >
-                                Internal
-                            </button>
-                            <button
-                                onClick={() => setSendMode('http')}
-                                className={`flex-1 text-[10px] py-1 rounded transition-colors ${sendMode === 'http' ? 'bg-[var(--primary)]/20 text-[var(--primary)] font-bold' : 'text-[var(--foreground-muted)]'}`}
-                            >
-                                Internet
-                            </button>
-                            <button
-                                onClick={() => setSendMode('tcp')}
-                                className={`flex-1 text-[10px] py-1 rounded transition-colors ${sendMode === 'tcp' ? 'bg-[var(--primary)]/20 text-[var(--primary)] font-bold' : 'text-[var(--foreground-muted)]'}`}
-                            >
-                                HL7 TCP
-                            </button>
+                            {['inject', 'http', 'tcp'].map((mode) => (
+                                <button
+                                    key={mode}
+                                    onClick={() => handleChange('sendMode', mode)}
+                                    className={`flex-1 text-[10px] py-1 rounded transition-colors uppercase font-medium ${sendMode === mode ? 'bg-[var(--primary)]/20 text-[var(--primary)]' : 'text-[var(--foreground-muted)]'}`}
+                                >
+                                    {mode === 'inject' ? 'Internal' : mode === 'http' ? 'Internet' : 'HL7 TCP'}
+                                </button>
+                            ))}
                         </div>
 
-                        {/* TCP Config */}
+                        {/* Config Logic */}
                         {sendMode === 'tcp' && (
-                            <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={tcpHost}
-                                        onChange={(e) => setTcpHost(e.target.value)}
-                                        className="flex-1 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
-                                        placeholder="Host (e.g. localhost)"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={tcpPort}
-                                        onChange={(e) => setTcpPort(e.target.value)}
-                                        className="w-16 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
-                                        placeholder="Port"
-                                    />
-                                    <input
-                                        type="text"
-                                        value={tcpTimeout}
-                                        onChange={(e) => setTcpTimeout(e.target.value)}
-                                        className="w-10 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
-                                        placeholder="30s"
-                                        title="Timeout (s)"
-                                    />
-                                </div>
+                            <div className="flex gap-2 animate-in fade-in">
+                                <input
+                                    type="text"
+                                    value={tcpHost}
+                                    onChange={(e) => handleChange('tcpHost', e.target.value)}
+                                    className="flex-1 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--primary)]"
+                                    placeholder="Host"
+                                    title="TCP Host"
+                                />
+                                <input
+                                    type="number"
+                                    value={tcpPort}
+                                    onChange={(e) => handleChange('tcpPort', e.target.value)}
+                                    className="w-16 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--primary)]"
+                                    placeholder="Port"
+                                    title="TCP Port"
+                                />
+                                <input
+                                    type="number"
+                                    value={tcpTimeout}
+                                    onChange={(e) => handleChange('tcpTimeout', e.target.value)}
+                                    className="w-10 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--primary)]"
+                                    placeholder="30"
+                                    title="Timeout (s)"
+                                />
                             </div>
                         )}
 
-                        {/* HTTP Config (Only if HTTP mode) */}
                         {sendMode === 'http' && (
-                            <div className="space-y-2 animate-in fade-in slide-in-from-top-1">
-                                <div className="flex gap-2 relative group">
-                                    <Handle
-                                        type="target"
-                                        position={Position.Left}
-                                        id="config-url"
-                                        className="!w-2 !h-2 !bg-[var(--warning)] !border-none opacity-0 group-hover:opacity-100 transition-opacity"
-                                        style={{ left: '-20px', top: '50%', transform: 'translateY(-50%)' }}
-                                    />
-                                    <select
-                                        value={httpMethod}
-                                        onChange={(e) => setHttpMethod(e.target.value)}
-                                        className="w-20 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
-                                    >
-                                        <option>POST</option>
-                                        <option>PUT</option>
-                                    </select>
-                                    <input
-                                        type="text"
-                                        value={httpUrl}
-                                        onChange={(e) => setHttpUrl(e.target.value)}
-                                        className="flex-1 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
-                                        placeholder="http://localhost:8080"
-                                    />
-                                </div>
+                            <div className="flex gap-2 relative group animate-in fade-in">
+                                <Handle
+                                    type="target"
+                                    position={Position.Left}
+                                    id="config-url"
+                                    className="!w-2.5 !h-2.5 !bg-[var(--warning)] !border-2 !border-[var(--background)] hover:scale-125 transition-transform"
+                                    style={{ left: '-12px', top: '50%', transform: 'translateY(-50%)' }}
+                                    title="Connect IP/Port/Text node to configure URL"
+                                />
+                                <select
+                                    value={httpMethod}
+                                    onChange={(e) => setHttpMethod(e.target.value)}
+                                    className="w-20 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--primary)]"
+                                >
+                                    <option>POST</option>
+                                    <option>PUT</option>
+                                    <option>GET</option>
+                                </select>
+                                <input
+                                    type="text"
+                                    value={httpUrl}
+                                    onChange={(e) => setHttpUrl(e.target.value)}
+                                    className="flex-1 bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 text-xs outline-none focus:border-[var(--primary)]"
+                                    placeholder="http://url"
+                                />
                             </div>
                         )}
 
-                        {/* Type Selector */}
+                        {/* Payload Config */}
                         <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-[var(--foreground-muted)]">
-                                Payload Format
-                            </label>
-                            <select
-                                value={payloadType}
-                                onChange={(e) => handleTypeChange(e.target.value)}
-                                className="w-full bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1.5 text-xs text-[var(--foreground)] outline-none focus:border-[var(--primary)]"
-                            >
-                                <option value="hl7">HL7 v2</option>
-                                <option value="json">JSON</option>
-                                <option value="xml">XML</option>
-                                <option value="csv">CSV</option>
-                                <option value="soap">SOAP</option>
-                                <option value="rest">REST</option>
-                            </select>
-                        </div>
-
-                        {/* Payload Editor */}
-                        <div className="space-y-1">
-                            <label className="text-[10px] uppercase font-bold text-[var(--foreground-muted)]">
-                                Payload Content
-                            </label>
+                            <div className="flex justify-between">
+                                <label className="text-[10px] uppercase font-bold text-[var(--foreground-muted)]">Payload</label>
+                                <select
+                                    value={payloadType}
+                                    onChange={(e) => handleTypeChange(e.target.value)}
+                                    className="bg-transparent text-[10px] text-[var(--primary)] outline-none cursor-pointer text-right"
+                                >
+                                    {Object.keys(PAYLOAD_PRESETS).map(k => (
+                                        <option key={k} value={k}>{k.toUpperCase()}</option>
+                                    ))}
+                                </select>
+                            </div>
                             <textarea
                                 value={payload}
-                                onChange={(e) => setPayload(e.target.value)}
+                                onChange={(e) => handleChange('payload', e.target.value)}
                                 className="w-full h-32 bg-[var(--background)] border border-[var(--glass-border)] rounded-lg p-2 text-[10px] font-mono text-[var(--foreground)] outline-none focus:border-[var(--primary)] resize-y whitespace-pre"
                                 spellCheck={false}
                             />
                         </div>
 
-                        {/* Actions */}
+                        {/* Action Buttons */}
                         <div className="flex justify-between items-center pt-2">
                             <span className="text-[10px] text-[var(--foreground-muted)]">
                                 {payload.length} chars
@@ -324,34 +292,37 @@ const TestNode = ({ data }: { data: TestNodeData }) => {
                                 onClick={handleSend}
                                 disabled={loading}
                                 size="sm"
-                                className="h-7 text-xs bg-[var(--primary)] hover:bg-[var(--primary-hover)]"
+                                className="h-7 text-xs bg-[var(--primary)] hover:bg-[var(--primary-hover)] gap-2"
                             >
-                                {loading ? 'Sending...' : <><Send size={12} className="mr-2" /> Send Test</>}
+                                {loading ? 'Sending...' : <><Send size={12} /> Send Request</>}
                             </Button>
                         </div>
-
-                        {/* Quick Response View */}
-                        {response && (
-                            <div className={`mt-2 text-[10px] p-2 rounded font-mono break-all whitespace-pre-wrap max-h-32 overflow-y-auto border 
-                                ${status === 'success'
-                                    ? 'bg-green-500/10 text-green-500 border-green-500/20'
-                                    : 'bg-red-500/10 text-red-500 border-red-500/20'
-                                }`}>
-                                {response}
-                            </div>
-                        )}
                     </div>
-                </div>
-            )}
+                )}
 
-            <Handle
-                type="source"
-                position={Position.Right}
-                className="!w-3 !h-3 !bg-[var(--primary)] !border-2 !border-[var(--background)]"
-            />
-        </div>
+                {/* Response Area - Always visible if there is a response */}
+                {!expanded && response && (
+                    <div className="pt-2 border-t border-[var(--glass-border)]">
+                        <div className="text-[10px] text-[var(--foreground-muted)] mb-1">Last Response:</div>
+                        <div className={`text-[10px] p-2 rounded font-mono truncate cursor-pointer hover:bg-[var(--glass-bg)] ${status === 'success' ? 'text-green-500' : 'text-red-500'
+                            }`} onClick={() => setExpanded(true)} title="Click to expand">
+                            {response.substring(0, 50)}...
+                        </div>
+                    </div>
+                )}
+
+                {expanded && response && (
+                    <div className={`mt-2 text-[10px] p-2 rounded font-mono break-all whitespace-pre-wrap max-h-32 overflow-y-auto border animate-in fade-in
+                        ${status === 'success'
+                            ? 'bg-green-500/10 text-green-500 border-green-500/20'
+                            : 'bg-red-500/10 text-red-500 border-red-500/20'
+                        }`}>
+                        {response}
+                    </div>
+                )}
+            </div>
+        </BaseNode>
     );
 };
 
 export default memo(TestNode);
-

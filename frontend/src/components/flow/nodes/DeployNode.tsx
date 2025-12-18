@@ -18,9 +18,17 @@ export function DeployNode({ id, data }: DeployNodeProps) {
     const executeDeploy = useFlowStore((state) => state.executeDeploy);
     const toggleChannelStatus = useFlowStore((state) => state.toggleChannelStatus);
     const deleteNode = useFlowStore((state) => state.deleteNode);
+    const edges = useFlowStore((state) => state.edges);
 
     const isRunning = channelStatus === 'online';
     const isDeploying = deployStatus === 'loading';
+
+    // Check if we have incoming connections
+    const isConnected = React.useMemo(() => {
+        return edges.some(edge => edge.target === id);
+    }, [edges, id]);
+
+    // ... handlers ...
 
     const handleStart = async (e: React.MouseEvent) => {
         e.stopPropagation();
@@ -52,23 +60,34 @@ export function DeployNode({ id, data }: DeployNodeProps) {
                 status={nodeStatus}
                 width="300px" // Slightly wider
                 className={`border-2 shadow-lg transition-colors ${isRunning ? 'border-emerald-500 shadow-emerald-500/20' :
-                        deployStatus === 'error' ? 'border-red-500' : 'border-[var(--primary)]'
+                    deployStatus === 'error' ? 'border-red-500' :
+                        isConnected ? 'border-blue-500/50' : 'border-[var(--primary)]'
                     }`}
             // We construct the internals manually using subcomponents
             >
+                {/* Target Handle - permite conexões de entrada */}
+                <Handle
+                    type="target"
+                    position={Position.Left}
+                    className={`!w-3 !h-3 !border-2 !border-[var(--background)] transition-colors ${isConnected ? '!bg-blue-500' : '!bg-[var(--primary)]'
+                        }`}
+                />
+
                 {/* Override standard BaseNode children */}
 
                 <BaseNodeHeader
-                    icon={<Rocket size={16} className={isRunning ? 'text-emerald-500' : ''} />}
+                    icon={<Rocket size={16} className={isRunning ? 'text-emerald-500' : isConnected ? 'text-blue-500' : ''} />}
                     label={data.label || "Channel Terminal"}
-                    subtitle={isRunning ? "Running" : "Stopped"}
+                    subtitle={isRunning ? "Running" : isConnected ? "Ready" : "Stopped"}
                 />
 
                 <BaseNodeContent className="flex flex-col gap-2 min-h-[60px] justify-center text-center">
                     <p className="text-xs text-[var(--foreground-muted)]">
                         {isRunning
                             ? "Channel is active and processing messages."
-                            : "Connect flow here and deploy to activate."}
+                            : isConnected
+                                ? "Flow connected. Ready to deploy."
+                                : "Connect flow here and deploy to activate."}
                     </p>
                 </BaseNodeContent>
 

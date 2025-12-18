@@ -3,6 +3,7 @@ import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { FileText, ChevronDown, ChevronRight, Settings2, HelpCircle } from 'lucide-react';
 import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
+import BaseNode from './BaseNode';
 
 interface FileWriterData {
     label: string;
@@ -31,34 +32,17 @@ const FileWriterNode = ({ data }: NodeProps<FileWriterData>) => {
     }, [nodeId, updateNodeData]);
 
     return (
-        <div className="flow-node destination px-4 py-3 w-[280px]">
-            <Handle
-                type="target"
-                position={Position.Left}
-                className="!w-3 !h-3 !bg-[var(--node-destination)] !border-2 !border-[var(--background)]"
-            />
-
-            <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-[var(--node-destination)]/20 flex items-center justify-center">
-                    <FileText size={20} className="text-[var(--node-destination)]" />
-                </div>
-                <div className="flex-1">
-                    <InlineEdit
-                        value={data.label || 'File Writer'}
-                        onChange={(v) => handleChange('label', v)}
-                        className="text-sm font-semibold text-[var(--foreground)]"
-                        displayClassName="hover:text-[var(--primary)] cursor-text"
-                        inputClassName="bg-transparent border-b border-[var(--primary)] outline-none w-full"
-                    />
-                    <div className="text-xs text-[var(--foreground-muted)]">
-                        {data.append ? 'Append Mode' : 'File Destination'}
-                    </div>
-                </div>
-            </div>
-
-            <div className="mt-3 space-y-2">
-                <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)]">
-                    <div className="text-xs text-[var(--foreground-muted)] mb-1">Directory</div>
+        <BaseNode
+            category="destination"
+            icon={<FileText size={20} />}
+            label={data.label || 'File Writer'}
+            subtitle={data.append ? 'Append Mode' : 'File Destination'}
+            className="w-[280px]"
+        >
+            <div className="space-y-2">
+                {/* Directory Config */}
+                <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] group">
+                    <div className="text-xs text-[var(--foreground-muted)] mb-1 font-medium group-hover:text-[var(--node-destination)] transition-colors">Directory</div>
                     <InlineEdit
                         value={data.path || './output'}
                         onChange={(v) => handleChange('path', v)}
@@ -68,13 +52,14 @@ const FileWriterNode = ({ data }: NodeProps<FileWriterData>) => {
                     />
                 </div>
 
-                <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)]">
+                {/* Filename Config */}
+                <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] group">
                     <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs text-[var(--foreground-muted)]">Filename Pattern</span>
+                        <span className="text-xs text-[var(--foreground-muted)] font-medium group-hover:text-[var(--primary)] transition-colors">Filename Pattern</span>
                         <button
                             onClick={() => setShowTemplateHelp(!showTemplateHelp)}
                             className="text-[var(--foreground-muted)] hover:text-[var(--primary)]"
-                            title="Template variables"
+                            title="Show available template variables"
                         >
                             <HelpCircle size={12} />
                         </button>
@@ -88,12 +73,12 @@ const FileWriterNode = ({ data }: NodeProps<FileWriterData>) => {
                         inputClassName="bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-0.5 w-full outline-none"
                     />
                     {showTemplateHelp && (
-                        <div className="mt-2 p-2 bg-[var(--background-secondary)] rounded text-xs text-[var(--foreground-muted)] border border-[var(--glass-border)]">
-                            <div className="font-medium mb-1">Available Variables:</div>
-                            <code className="block">{'${timestamp}'} - ISO timestamp</code>
-                            <code className="block">{'${uuid}'} - Unique ID</code>
-                            <code className="block">{'${date}'} - YYYY-MM-DD</code>
-                            <code className="block">{'${time}'} - HH-MM-SS</code>
+                        <div className="mt-2 p-2 bg-[var(--background-secondary)] rounded text-xs text-[var(--foreground-muted)] border border-[var(--glass-border)] animate-in slide-in-from-top-1">
+                            <div className="font-medium mb-1 text-[var(--foreground)]">Available Variables:</div>
+                            <code className="block text-[10px]">{'${timestamp}'} - ISO timestamp</code>
+                            <code className="block text-[10px]">{'${uuid}'} - Unique ID</code>
+                            <code className="block text-[10px]">{'${date}'} - YYYY-MM-DD</code>
+                            <code className="block text-[10px]">{'${time}'} - HH-MM-SS</code>
                         </div>
                     )}
                 </div>
@@ -104,7 +89,7 @@ const FileWriterNode = ({ data }: NodeProps<FileWriterData>) => {
                         onClick={() => setShowAdvanced(!showAdvanced)}
                         className="w-full p-2 flex items-center justify-between text-xs text-[var(--foreground-muted)] hover:bg-[var(--glass-bg)] transition-colors"
                     >
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1 font-medium">
                             <Settings2 size={12} />
                             Advanced Options
                         </span>
@@ -112,16 +97,17 @@ const FileWriterNode = ({ data }: NodeProps<FileWriterData>) => {
                     </button>
 
                     {showAdvanced && (
-                        <div className="p-2 border-t border-[var(--glass-border)] space-y-2">
+                        <div className="p-2 border-t border-[var(--glass-border)] space-y-2 animate-in slide-in-from-top-1">
                             {/* Append Mode Toggle */}
                             <div className="flex items-center justify-between">
                                 <span className="text-xs text-[var(--foreground-muted)]">Append Mode</span>
                                 <button
                                     onClick={() => handleChange('append', !data.append)}
-                                    className={`w-10 h-5 rounded-full transition-colors relative ${data.append ? 'bg-green-500' : 'bg-[var(--glass-border)]'
+                                    className={`w-8 h-4 rounded-full transition-colors relative ${data.append ? 'bg-green-500' : 'bg-[var(--glass-border)]'
                                         }`}
+                                    title="Toggle Append Mode"
                                 >
-                                    <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-all ${data.append ? 'right-0.5' : 'left-0.5'
+                                    <div className={`w-3 h-3 rounded-full bg-white absolute top-0.5 transition-all ${data.append ? 'right-0.5' : 'left-0.5'
                                         }`} />
                                 </button>
                             </div>
@@ -143,10 +129,8 @@ const FileWriterNode = ({ data }: NodeProps<FileWriterData>) => {
                     )}
                 </div>
             </div>
-        </div>
+        </BaseNode>
     );
 };
 
 export default memo(FileWriterNode);
-
-

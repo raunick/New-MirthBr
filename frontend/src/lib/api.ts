@@ -258,6 +258,17 @@ export const testChannel = async (channelId: string, payloadType: string, payloa
         if (error instanceof ApiError) {
             throw error;
         }
+
+        // Handle 404 specifically for test endpoint - usually means channel not running/deployed
+        if (axios.isAxiosError(error) && error.response?.status === 404) {
+            throw new ApiError(
+                'Channel not found',
+                'CHANNEL_NOT_FOUND',
+                404,
+                'Canal não encontrado. Verifique se você fez o deploy do canal (botão "Deploy & Save").'
+            );
+        }
+
         throw new ApiError(
             'Failed to test channel',
             'TEST_ERROR',

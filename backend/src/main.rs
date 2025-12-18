@@ -223,6 +223,7 @@ async fn main() {
         .route("/channels", post(api::handlers::channels::create_channel))
         .route("/channels", get(api::handlers::channels::list_channels))
         .route("/channels/status", get(api::handlers::channels::get_active_channels))
+        .route("/channels/:id/start", post(api::handlers::channels::start_channel))
         .route("/channels/:id/stop", post(api::handlers::channels::stop_channel))
         .route("/channels/:id/test", post(api::handlers::test::test_channel))
         .route("/test/tcp", post(api::handlers::test::test_tcp_dispatch))

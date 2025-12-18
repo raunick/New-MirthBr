@@ -107,3 +107,61 @@ pub async fn get_active_channels(
     let ids = manager.get_active_channel_ids();
     Json(ids)
 }
+
+/// Start a channel by ID - loads config from DB and starts it
+pub async fn start_channel(
+    State(manager): State<Arc<ChannelManager>>,
+    axum::extract::Path(id): axum::extract::Path<Uuid>,
+) -> impl IntoResponse {
+    // Check if already running
+    if manager.get_active_channel_ids().contains(&id) {
+        return (StatusCode::OK, Json(serde_json::json!({ 
+            "status": "already_running",
+            "message": "Channel is already running"
+        })));
+    }
+
+    // Load channel config from DB
+    match manager.get_channel_by_id(id).await {
+        Ok(Some(channel)) => {
+            match manager.start_channel(channel, None).await {
+                Ok(_) => {
+                    tracing::info!("✅ Channel {} started successfully", id);
+                    (StatusCode::OK, Json(serde_json::json!({ 
+                        "status": "started",
+                        "message": "Channel started successfully"
+                    })))
+                },
+                Err(e) => {
+                    let error_id = generate_error_id();
+                    tracing::error!(
+                        error_id = %error_id,
+                        channel_id = %id,
+                        error = ?e,
+                        "Failed to start channel"
+                    );
+                    (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ 
+                        "status": "error",
+                        "error_id": error_id,
+                        "message": "Failed to start channel"
+                    })))
+                }
+            }
+        },
+        Ok(None) => {
+            (StatusCode::NOT_FOUND, Json(serde_json::json!({ 
+                "status": "error",
+                "message": "Channel not found in database. Deploy it first."
+            })))
+        },
+        Err(e) => {
+            let error_id = generate_error_id();
+            tracing::error!(error_id = %error_id, error = ?e, "Failed to load channel from DB");
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ 
+                "status": "error",
+                "error_id": error_id,
+                "message": "Failed to load channel configuration"
+            })))
+        }
+    }
+}

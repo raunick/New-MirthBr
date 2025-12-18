@@ -3,6 +3,7 @@ import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Radio, Lock, ChevronDown, ChevronRight } from 'lucide-react';
 import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
+import BaseNode from './BaseNode';
 
 interface HTTPSourceData {
     label: string;
@@ -68,42 +69,40 @@ const HTTPSourceNode = ({ data }: NodeProps<HTTPSourceData>) => {
         }
     }, [configEdges, nodes, nodeId, data.port, data.path, handleChange]);
 
-    return (
-        <div className="flow-node source px-4 py-3 w-[260px]">
-            <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-[var(--node-source)]/20 flex items-center justify-center relative">
-                    <Radio size={20} className="text-[var(--node-source)]" />
-                    {isTlsEnabled && (
-                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                            <Lock size={10} className="text-white" />
-                        </div>
-                    )}
+    // Icon with status indicator for TLS
+    const IconComponent = (
+        <div className="relative flex items-center justify-center w-full h-full">
+            <Radio size={20} />
+            {isTlsEnabled && (
+                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full flex items-center justify-center border border-[var(--glass-bg)]" title="TLS Enabled">
+                    <Lock size={8} className="text-white" />
                 </div>
-                <div className="flex-1">
-                    <InlineEdit
-                        value={data.label || 'HTTP Listener'}
-                        onChange={(v) => handleChange('label', v)}
-                        className="text-sm font-semibold text-[var(--foreground)]"
-                        displayClassName="hover:text-[var(--primary)] cursor-text"
-                        inputClassName="bg-transparent border-b border-[var(--primary)] outline-none w-full"
-                    />
-                    <div className="text-xs text-[var(--foreground-muted)]">
-                        {isTlsEnabled ? 'HTTPS Source' : 'HTTP Source'}
-                    </div>
-                </div>
-            </div>
+            )}
+        </div>
+    );
 
-            <div className="mt-3 space-y-2">
+    return (
+        <BaseNode
+            category="source"
+            icon={IconComponent}
+            label={data.label || 'HTTP Listener'}
+            subtitle={isTlsEnabled ? 'HTTPS Source' : 'HTTP Source'}
+            className="w-[280px]"
+        >
+            <div className="space-y-2">
+                {/* Port Configuration */}
                 <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] relative group">
+                    {/* Config Handle - Always visible but subtle */}
                     <Handle
                         type="target"
                         position={Position.Left}
                         id="config-port"
-                        className="!w-2 !h-2 !bg-[var(--warning)] !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="!w-2.5 !h-2.5 !bg-[var(--warning)] !border-2 !border-[var(--background)] transition-all hover:scale-125"
                         style={{ left: '-6px', top: '50%', transform: 'translateY(-50%)' }}
+                        title="Connect Port Node to configure dynamically"
                     />
                     <div className="flex items-center justify-between">
-                        <span className="text-xs text-[var(--foreground-muted)]">Port</span>
+                        <span className="text-xs text-[var(--foreground-muted)] font-medium" title="Port detection">Port</span>
                         <InlineEdit
                             value={data.port || 8080}
                             onChange={(v) => handleChange('port', v)}
@@ -115,23 +114,26 @@ const HTTPSourceNode = ({ data }: NodeProps<HTTPSourceData>) => {
                     </div>
                 </div>
 
-                <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)]">
-                    <div className="flex items-center justify-between relative group">
+                {/* Path Configuration */}
+                <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] relative">
+                    <div className="flex items-center justify-between group">
+                        {/* Config Handle */}
                         <Handle
                             type="target"
                             position={Position.Left}
                             id="config-path"
-                            className="!w-2 !h-2 !bg-[var(--warning)] !border-none opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="!w-2.5 !h-2.5 !bg-[var(--warning)] !border-2 !border-[var(--background)] transition-all hover:scale-125"
                             style={{ left: '-14px', top: '50%', transform: 'translateY(-50%)' }}
+                            title="Connect Text Node to configure path"
                         />
-                        <span className="text-xs text-[var(--foreground-muted)]">Path</span>
+                        <span className="text-xs text-[var(--foreground-muted)] font-medium">Path</span>
                         <InlineEdit
                             value={data.path || '/'}
                             onChange={(v) => handleChange('path', v)}
                             placeholder="/api/endpoint"
                             className="text-sm font-mono text-[var(--foreground)]"
-                            displayClassName="hover:bg-[var(--background)] px-2 py-0.5 rounded cursor-text"
-                            inputClassName="bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-0.5 w-32 outline-none"
+                            displayClassName="hover:bg-[var(--background)] px-2 py-0.5 rounded cursor-text max-w-[140px] truncate block text-right"
+                            inputClassName="bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-0.5 w-32 outline-none text-right"
                         />
                     </div>
                 </div>
@@ -142,7 +144,7 @@ const HTTPSourceNode = ({ data }: NodeProps<HTTPSourceData>) => {
                         onClick={() => setShowTls(!showTls)}
                         className="w-full p-2 flex items-center justify-between text-xs text-[var(--foreground-muted)] hover:bg-[var(--glass-bg)] transition-colors"
                     >
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1.5 font-medium">
                             <Lock size={12} className={isTlsEnabled ? 'text-green-500' : ''} />
                             TLS Configuration
                         </span>
@@ -150,40 +152,33 @@ const HTTPSourceNode = ({ data }: NodeProps<HTTPSourceData>) => {
                     </button>
 
                     {showTls && (
-                        <div className="p-2 border-t border-[var(--glass-border)] space-y-2">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs text-[var(--foreground-muted)]">Cert Path</span>
+                        <div className="p-2 border-t border-[var(--glass-border)] space-y-2 animate-in slide-in-from-top-1">
+                            <div className="flex flex-col gap-1">
+                                <span className="text-[10px] text-[var(--foreground-muted)] uppercase tracking-wider">Cert Path</span>
                                 <input
                                     type="text"
                                     value={data.cert_path || ''}
                                     onChange={(e) => handleChange('cert_path', e.target.value)}
                                     placeholder="/path/to/cert.pem"
-                                    className="text-xs font-mono bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 w-32 outline-none focus:border-[var(--primary)]"
+                                    className="text-xs font-mono bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 w-full outline-none focus:border-[var(--primary)] transition-colors placeholder:text-[var(--foreground-muted)]/50"
                                 />
                             </div>
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs text-[var(--foreground-muted)]">Key Path</span>
+                            <div className="flex flex-col gap-1">
+                                <span className="text-[10px] text-[var(--foreground-muted)] uppercase tracking-wider">Key Path</span>
                                 <input
                                     type="text"
                                     value={data.key_path || ''}
                                     onChange={(e) => handleChange('key_path', e.target.value)}
                                     placeholder="/path/to/key.pem"
-                                    className="text-xs font-mono bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 w-32 outline-none focus:border-[var(--primary)]"
+                                    className="text-xs font-mono bg-[var(--background)] border border-[var(--glass-border)] rounded px-2 py-1 w-full outline-none focus:border-[var(--primary)] transition-colors placeholder:text-[var(--foreground-muted)]/50"
                                 />
                             </div>
                         </div>
                     )}
                 </div>
             </div>
-
-            <Handle
-                type="source"
-                position={Position.Right}
-                className="!w-3 !h-3 !bg-[var(--node-source)] !border-2 !border-[var(--background)]"
-            />
-        </div>
+        </BaseNode>
     );
 };
 
 export default memo(HTTPSourceNode);
-

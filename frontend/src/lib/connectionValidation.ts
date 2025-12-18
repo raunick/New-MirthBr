@@ -46,7 +46,8 @@ export function isValidConnection(
     }
 
     // Destination nodes cannot be source of a connection
-    if (sourceCategory === 'destination') {
+    // EXCEPTION: Destination nodes CAN connect to DeployNode (Channel Terminal)
+    if (sourceCategory === 'destination' && targetType !== 'deployNode') {
         return false;
     }
 
@@ -56,6 +57,11 @@ export function isValidConnection(
 
     if (targetCategory === 'source' && targetType !== 'mergeNode' && !isConfigHandle) {
         return false;
+    }
+
+    // Allow connections to DeployNode (Channel Terminal)
+    if (targetType === 'deployNode') {
+        return true;
     }
 
     // Prevent self-connections
@@ -161,6 +167,8 @@ export function getMaxConnections(nodeType: string): { input: number; output: nu
             return { input: 1, output: 2 }; // pass and reject
         case 'commentNode':
             return { input: 0, output: 0 };
+        case 'deployNode':
+            return { input: 1, output: 0 };
         default:
             if (category === 'source') return { input: 0, output: 1 };
             if (category === 'destination') return { input: 1, output: 0 };
