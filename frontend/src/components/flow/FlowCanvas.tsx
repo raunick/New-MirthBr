@@ -32,6 +32,7 @@ import HTTPSenderNode from './nodes/HTTPSenderNode';
 import DatabaseWriterNode from './nodes/DatabaseWriterNode';
 import TCPSenderNode from './nodes/TCPSenderNode';
 import LuaDestinationNode from './nodes/LuaDestinationNode';
+import DeployNode from './nodes/DeployNode';
 
 // Special Nodes
 import TestNode from './nodes/TestNode';
@@ -55,7 +56,7 @@ import { Button } from '@/components/ui/button';
 import { exportToRust } from '@/lib/flow-compiler';
 import { deployChannel, testChannel } from '@/lib/api';
 import { validateConnection } from '@/lib/connectionValidation';
-import { Play, Save, Layout, Download, Upload, Settings } from 'lucide-react';
+import { Play, Save, Layout, Download, Upload, Settings, FilePlus } from 'lucide-react';
 import axios from 'axios';
 
 const nodeTypes = {
@@ -78,6 +79,7 @@ const nodeTypes = {
     luaDestination: LuaDestinationNode,
     // Special
     testNode: TestNode,
+    deployNode: DeployNode,
     // Utility Nodes
     ipNode: IPNode,
     portNode: PortNode,
@@ -116,13 +118,13 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
         channelName, setChannelName,
         maxRetries, setMaxRetries,
         isRunning, setRunning,
-        errorDestinationId, setErrorDestinationId
+        errorDestinationId, setErrorDestinationId,
+        resetFlow,
+        // Editor modal state from store (replaces callback injection)
+        editorState, closeEditor, saveEditorCode
     } = useFlowStore();
 
-    const [isEditorOpen, setIsEditorOpen] = useState(false);
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-    const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
-    const [editorCode, setEditorCode] = useState("");
     const [isDeploying, setIsDeploying] = useState(false);
     const [menu, setMenu] = useState<MenuState | null>(null);
 
@@ -204,65 +206,18 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
         [nodes, edges]
     );
 
-    // Data change handler
+    // Data change handler - still needed for inline edits
     const handleDataChange = useCallback((nodeId: string, field: string, value: any) => {
         updateNodeData(nodeId, field, value);
     }, [updateNodeData]);
 
-    const handleEditCode = useCallback((nodeId: string, currentCode: string) => {
-        setEditingNodeId(nodeId);
-        setEditorCode(currentCode);
-        setIsEditorOpen(true);
-    }, []);
+    // handleEditCode and handleSaveScript removed - now handled via store.openEditor/saveEditorCode
 
-    const handleSaveScript = (newCode: string) => {
-        if (editingNodeId) {
-            updateNodeData(editingNodeId, 'code', newCode);
+    const handleNewChannel = useCallback(() => {
+        if (confirm('Create new channel? Any unsaved changes will be lost.')) {
+            resetFlow();
         }
-        setIsEditorOpen(false);
-        setEditingNodeId(null);
-    };
-
-    const handleDeploy = async () => {
-        setIsDeploying(true);
-        const { channelName, channelId, errorDestinationId, maxRetries } = useFlowStore.getState();
-
-        // Backend config
-        const channelConfig = exportToRust(nodes, edges, channelName || "My Channel", channelId, errorDestinationId, maxRetries);
-
-        // Frontend schema (for visual restoration)
-        const frontendSchema = {
-            nodes,
-            edges,
-            channelName: channelName || "My Channel",
-            channelId,
-            errorDestinationId
-        };
-
-        console.log("Deploying:", channelConfig);
-        try {
-            const response = await deployChannel({
-                channel: channelConfig,
-                frontend_schema: frontendSchema
-            });
-            if (response.status === 'deployed') {
-                onDeploySuccess?.();
-                // Also save to local storage for good measure
-                saveFlow();
-                setRunning(true);
-            }
-        } catch (e) {
-            onDeployError?.();
-            console.error(e);
-        } finally {
-            setIsDeploying(false);
-        }
-    };
-
-    const handleSave = useCallback(() => {
-        saveFlow();
-        // Could show a toast here
-    }, [saveFlow]);
+    }, [resetFlow]);
 
     const handleDownload = useCallback(() => {
         exportFlow();
@@ -295,61 +250,13 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
         event.target.value = '';
     }, [importFlow]);
 
-    const handleTest = useCallback(async (payloadType: string, payloadContent: string) => {
-        const { channelId } = useFlowStore.getState();
-        try {
-            await testChannel(channelId, payloadType, payloadContent);
-        } catch (e: any) {
-            console.error(e);
-            throw e;
-        }
-    }, []);
-
     // Load flow on mount
     useEffect(() => {
         loadFlow();
     }, [loadFlow]);
 
-    // Callback injection
-    useEffect(() => {
-        let changed = false;
-        const newNodes = nodes.map(node => {
-            const data = node.data;
-            let newData = { ...data };
-            let modified = false;
-
-            if (!data.onDataChange) {
-                newData.onDataChange = (field: string, value: any) => handleDataChange(node.id, field, value);
-                modified = true;
-            }
-
-            if (['luaScript', 'filter', 'databasePoller', 'databaseWriter', 'luaDestination'].includes(node.type || '')) {
-                if (!data.onEdit) {
-                    newData.onEdit = (code: string) => handleEditCode(node.id, code);
-                    modified = true;
-                }
-                if (!data.onEditCondition) { newData.onEditCondition = (c: string) => handleEditCode(node.id, c); modified = true; }
-                if (!data.onEditQuery) { newData.onEditQuery = (q: string) => handleEditCode(node.id, q); modified = true; }
-            }
-
-            if (node.type === 'testNode') {
-                if (!data.onTest) {
-                    newData.onTest = handleTest;
-                    modified = true;
-                }
-            }
-
-            if (modified) {
-                changed = true;
-                return { ...node, data: newData };
-            }
-            return node;
-        });
-
-        if (changed) {
-            setNodes(newNodes);
-        }
-    }, [nodes, handleDataChange, handleEditCode, handleTest, setNodes]);
+    // Callback injection REMOVED - nodes now access store.openEditor/updateNodeData directly
+    // This eliminates the O(n²) re-render issue where callbacks were injected on every nodes change
 
     return (
         <div className="w-full h-full relative" ref={reactFlowWrapper}>
@@ -374,6 +281,16 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
                 <Button
                     variant="outline"
                     size="sm"
+                    onClick={handleNewChannel}
+                    className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
+                    title="Create New Channel"
+                >
+                    <FilePlus size={16} className="mr-2" />
+                    New Channel
+                </Button>
+                <Button
+                    variant="outline"
+                    size="sm"
                     onClick={handleUpload}
                     className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
                     title="Carregar workflow de arquivo"
@@ -391,16 +308,7 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
                     <Download size={16} className="mr-2" />
                     Download
                 </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleSave}
-                    className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
-                    title="Salvar no navegador"
-                >
-                    <Save size={16} className="mr-2" />
-                    Save
-                </Button>
+                {/* Save button removed */}
                 <Button
                     variant="outline"
                     size="sm"
@@ -411,15 +319,7 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
                     <Settings size={16} className="mr-2" />
                     Settings
                 </Button>
-                <Button
-                    onClick={handleDeploy}
-                    disabled={isDeploying}
-                    size="sm"
-                    className="bg-gradient-to-r from-[var(--primary)] to-[var(--secondary)] hover:opacity-90 transition-opacity"
-                >
-                    <Play size={16} className="mr-2" />
-                    {isDeploying ? 'Deploying...' : 'Deploy Channel'}
-                </Button>
+                {/* Deploy button removed (replaced by DeployNode) */}
             </div>
 
             <ChannelSettingsModal
@@ -501,10 +401,10 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
             )}
 
             <LuaEditorModal
-                isOpen={isEditorOpen}
-                initialCode={editorCode}
-                onClose={() => setIsEditorOpen(false)}
-                onSave={handleSaveScript}
+                isOpen={editorState.isOpen}
+                initialCode={editorState.initialCode}
+                onClose={closeEditor}
+                onSave={saveEditorCode}
             />
         </div>
     );

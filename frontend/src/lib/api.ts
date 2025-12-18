@@ -324,6 +324,23 @@ export const stopChannel = async (channelId: string) => {
     }
 };
 
+export const startChannel = async (channelId: string) => {
+    try {
+        const response = await api.post(`/channels/${channelId}/start`);
+        return response.data;
+    } catch (error) {
+        if (error instanceof ApiError) {
+            throw error;
+        }
+        throw new ApiError(
+            'Failed to start channel',
+            'START_ERROR',
+            500,
+            'Erro ao iniciar o canal.'
+        );
+    }
+};
+
 export const getActiveChannels = async (): Promise<string[]> => {
     try {
         const response = await api.get('/channels/status');

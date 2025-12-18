@@ -1,6 +1,7 @@
-import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useState, useCallback, useEffect } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Network, Lock, ChevronDown, ChevronRight } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface TCPSourceData {
@@ -8,34 +9,45 @@ interface TCPSourceData {
     port: number;
     cert_path?: string;
     key_path?: string;
-    onDataChange?: (field: string, value: string | number) => void;
 }
 
-import { useEffect } from 'react';
-import { useFlowStore } from '@/stores/useFlowStore';
+/**
+ * TCPSourceNode - TCP Listener source node
+ * Refactored to access store directly (no callback injection)
+ */
+const TCPSourceNode = ({ data }: NodeProps<TCPSourceData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
 
-const TCPSourceNode = ({ data, id }: NodeProps<TCPSourceData>) => {
-    const nodes = useFlowStore((state) => state.nodes);
+    // Stable selector pattern
     const edges = useFlowStore((state) => state.edges);
+    const configEdges = React.useMemo(() =>
+        edges.filter(e => e.target === nodeId && e.targetHandle?.startsWith('config-')),
+        [edges, nodeId]);
+    const nodes = useFlowStore((state) => state.nodes);
+
     const [showTls, setShowTls] = useState(false);
 
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     const isTlsEnabled = !!(data.cert_path && data.key_path);
 
+    // Sync from connected config nodes
     useEffect(() => {
-        const configEdge = edges.find(e => e.target === id && e.targetHandle === 'config-port');
-        if (configEdge) {
-            const sourceNode = nodes.find(n => n.id === configEdge.source);
-            if (sourceNode && sourceNode.type === 'portNode' && sourceNode.data.port !== undefined) {
+        const portEdge = configEdges.find(e => e.targetHandle === 'config-port');
+        if (portEdge) {
+            const sourceNode = nodes.find(n => n.id === portEdge.source);
+            if (sourceNode?.type === 'portNode' && sourceNode.data.port !== undefined) {
                 if (sourceNode.data.port != data.port) {
                     handleChange('port', sourceNode.data.port);
                 }
             }
         }
-    }, [nodes, edges, id, data.port]);
+    }, [configEdges, nodes, nodeId, data.port, handleChange]);
 
     return (
         <div className="flow-node source-tcp px-4 py-3 w-[260px]">
@@ -134,4 +146,5 @@ const TCPSourceNode = ({ data, id }: NodeProps<TCPSourceData>) => {
 };
 
 export default memo(TCPSourceNode);
+
 

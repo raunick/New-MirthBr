@@ -1,19 +1,34 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Filter, Edit3 } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface FilterData {
     label: string;
     condition: string;
-    onDataChange?: (field: string, value: string | number) => void;
-    onEditCondition?: (condition: string) => void;
 }
 
-const FilterNode = ({ data, id }: NodeProps<FilterData>) => {
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * FilterNode - Processor node for message filtering
+ * Refactored to access store directly (no callback injection)
+ */
+const FilterNode = ({ data }: NodeProps<FilterData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+    const openEditor = useFlowStore((state) => state.openEditor);
+
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
+
+    const handleEditCondition = useCallback(() => {
+        if (nodeId) {
+            openEditor(nodeId, 'condition', data.condition || 'msg.type == "HL7"');
+        }
+    }, [nodeId, openEditor, data.condition]);
 
     const conditionPreview = (data.condition || 'msg.type == "HL7"').substring(0, 30);
 
@@ -49,7 +64,7 @@ const FilterNode = ({ data, id }: NodeProps<FilterData>) => {
             </div>
 
             <button
-                onClick={() => data.onEditCondition?.(data.condition || '')}
+                onClick={handleEditCondition}
                 className="w-full p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] 
                          hover:border-[var(--node-processor-filter)] transition-colors flex items-center justify-center gap-2
                          text-sm text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
@@ -82,3 +97,4 @@ const FilterNode = ({ data, id }: NodeProps<FilterData>) => {
 };
 
 export default memo(FilterNode);
+

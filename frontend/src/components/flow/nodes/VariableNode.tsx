@@ -1,6 +1,7 @@
-import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Variable, Plus, Trash2 } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface VariableEntry {
@@ -11,32 +12,39 @@ interface VariableEntry {
 interface VariableNodeData {
     label: string;
     variables: VariableEntry[];
-    onDataChange?: (field: string, value: any) => void;
 }
 
-const VariableNode = ({ data, id }: NodeProps<VariableNodeData>) => {
+/**
+ * VariableNode - Key-value store utility node
+ * Refactored to access store directly (no callback injection)
+ */
+const VariableNode = ({ data }: NodeProps<VariableNodeData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
     const variables = data.variables || [];
 
-    const handleChange = (field: string, value: any) => {
-        data.onDataChange?.(field, value);
-    };
+    const handleChange = useCallback((field: string, value: any) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
-    const addVariable = () => {
+    const addVariable = useCallback(() => {
         const newVariables = [...variables, { key: 'newKey', value: '' }];
         handleChange('variables', newVariables);
-    };
+    }, [variables, handleChange]);
 
-    const removeVariable = (index: number) => {
+    const removeVariable = useCallback((index: number) => {
         const newVariables = variables.filter((_, i) => i !== index);
         handleChange('variables', newVariables);
-    };
+    }, [variables, handleChange]);
 
-    const updateVariable = (index: number, field: 'key' | 'value', value: string) => {
+    const updateVariable = useCallback((index: number, field: 'key' | 'value', value: string) => {
         const newVariables = variables.map((v, i) =>
             i === index ? { ...v, [field]: value } : v
         );
         handleChange('variables', newVariables);
-    };
+    }, [variables, handleChange]);
 
     return (
         <div className="flow-node utility px-4 py-3 w-[280px] border-l-4" style={{ borderLeftColor: 'var(--warning)' }}>
@@ -108,3 +116,4 @@ const VariableNode = ({ data, id }: NodeProps<VariableNodeData>) => {
 };
 
 export default memo(VariableNode);
+

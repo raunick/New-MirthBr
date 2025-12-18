@@ -1,6 +1,7 @@
-import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useState, useCallback, useEffect, useMemo } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Radio, Lock, ChevronDown, ChevronRight } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface HTTPSourceData {
@@ -9,48 +10,63 @@ interface HTTPSourceData {
     path?: string;
     cert_path?: string;
     key_path?: string;
-    onDataChange?: (field: string, value: string | number) => void;
 }
 
-import { useEffect } from 'react';
-import { useFlowStore } from '@/stores/useFlowStore';
+/**
+ * HTTPSourceNode - HTTP Listener source node
+ * Refactored to access store directly (no callback injection)
+ */
+const HTTPSourceNode = ({ data }: NodeProps<HTTPSourceData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
 
-const HTTPSourceNode = ({ data, id }: NodeProps<HTTPSourceData>) => {
-    const nodes = useFlowStore((state) => state.nodes);
+    // Stable selector pattern
     const edges = useFlowStore((state) => state.edges);
+    const configEdges = useMemo(() =>
+        edges.filter(e => e.target === nodeId && e.targetHandle?.startsWith('config-')),
+        [edges, nodeId]);
+    const nodes = useFlowStore((state) => state.nodes);
+
     const [showTls, setShowTls] = useState(false);
 
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     const isTlsEnabled = !!(data.cert_path && data.key_path);
 
+    // Sync from connected config nodes
     useEffect(() => {
         // Sync Port
-        const configEdge = edges.find(e => e.target === id && e.targetHandle === 'config-port');
-        if (configEdge) {
-            const sourceNode = nodes.find(n => n.id === configEdge.source);
-            if (sourceNode && sourceNode.type === 'portNode' && sourceNode.data.port !== undefined) {
-                if (sourceNode.data.port != data.port) {
-                    handleChange('port', sourceNode.data.port);
+        const portEdge = configEdges.find(e => e.targetHandle === 'config-port');
+        if (portEdge) {
+            const sourceNode = nodes.find(n => n.id === portEdge.source);
+            if (sourceNode) {
+                // Try to get value from various common data fields
+                // Prioritize 'value' (often used for templates/resolved vars) -> 'port' -> 'text'
+                const rawVal = sourceNode.data.value ?? sourceNode.data.port ?? sourceNode.data.text;
+                const portNum = typeof rawVal === 'string' ? parseInt(rawVal, 10) : Number(rawVal);
+
+                if (!isNaN(portNum) && portNum > 0 && portNum !== data.port) {
+                    handleChange('port', portNum);
                 }
             }
         }
 
         // Sync Path
-        const pathEdge = edges.find(e => e.target === id && e.targetHandle === 'config-path');
+        const pathEdge = configEdges.find(e => e.targetHandle === 'config-path');
         if (pathEdge) {
             const sourceNode = nodes.find(n => n.id === pathEdge.source);
-            if (sourceNode && sourceNode.type === 'textNode') {
-                // Prefer resolved value (data.value) if available (for templates), else use raw text
+            if (sourceNode?.type === 'textNode') {
                 const val = sourceNode.data.value ?? sourceNode.data.text;
                 if (val && val !== data.path) {
                     handleChange('path', val);
                 }
             }
         }
-    }, [nodes, edges, id, data.port, data.path]);
+    }, [configEdges, nodes, nodeId, data.port, data.path, handleChange]);
 
     return (
         <div className="flow-node source px-4 py-3 w-[260px]">
@@ -170,3 +186,4 @@ const HTTPSourceNode = ({ data, id }: NodeProps<HTTPSourceData>) => {
 };
 
 export default memo(HTTPSourceNode);
+

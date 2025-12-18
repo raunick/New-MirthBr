@@ -1,19 +1,28 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Hash } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface PortNodeData {
     label: string;
     port: number;
     protocol: 'TCP' | 'UDP' | 'HTTP';
-    onDataChange?: (field: string, value: string | number) => void;
 }
 
-const PortNode = ({ data, id }: NodeProps<PortNodeData>) => {
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * PortNode - Port configuration utility node
+ * Refactored to access store directly (no callback injection)
+ */
+const PortNode = ({ data }: NodeProps<PortNodeData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     return (
         <div className="flow-node utility px-4 py-3 w-[200px] border-l-4" style={{ borderLeftColor: 'var(--warning)' }}>
@@ -80,3 +89,4 @@ const PortNode = ({ data, id }: NodeProps<PortNodeData>) => {
 };
 
 export default memo(PortNode);
+

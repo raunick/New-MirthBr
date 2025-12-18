@@ -1,19 +1,28 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Calculator, RotateCcw } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface CounterNodeData {
     label: string;
     count: number;
     resetInterval: number;
-    onDataChange?: (field: string, value: number) => void;
 }
 
-const CounterNode = ({ data, id }: NodeProps<CounterNodeData>) => {
-    const handleChange = (field: string, value: number) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * CounterNode - Counting utility node
+ * Refactored to access store directly (no callback injection)
+ */
+const CounterNode = ({ data }: NodeProps<CounterNodeData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+
+    const handleChange = useCallback((field: string, value: number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     const count = data.count || 0;
 
@@ -79,3 +88,4 @@ const CounterNode = ({ data, id }: NodeProps<CounterNodeData>) => {
 };
 
 export default memo(CounterNode);
+

@@ -1,13 +1,13 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Clock } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface TimestampNodeData {
     label: string;
     field: string;
     format: string;
-    onDataChange?: (field: string, value: string) => void;
 }
 
 const FORMATS = [
@@ -18,10 +18,19 @@ const FORMATS = [
     { value: 'DATETIME', label: 'DateTime', example: '2024-01-15 10:30:00' },
 ];
 
-const TimestampNode = ({ data, id }: NodeProps<TimestampNodeData>) => {
-    const handleChange = (field: string, value: string) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * TimestampNode - Timestamp utility node
+ * Refactored to access store directly (no callback injection)
+ */
+const TimestampNode = ({ data }: NodeProps<TimestampNodeData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+
+    const handleChange = useCallback((field: string, value: string) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     const format = data.format || 'ISO';
     const selectedFormat = FORMATS.find(f => f.value === format);
@@ -94,3 +103,4 @@ const TimestampNode = ({ data, id }: NodeProps<TimestampNodeData>) => {
 };
 
 export default memo(TimestampNode);
+

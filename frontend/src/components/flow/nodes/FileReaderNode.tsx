@@ -1,19 +1,28 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { FileInput } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface FileReaderData {
     label: string;
     path: string;
     pattern?: string;
-    onDataChange?: (field: string, value: string | number) => void;
 }
 
-const FileReaderNode = ({ data, id }: NodeProps<FileReaderData>) => {
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * FileReaderNode - File source node
+ * Refactored to access store directly (no callback injection)
+ */
+const FileReaderNode = ({ data }: NodeProps<FileReaderData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     return (
         <div className="flow-node source px-4 py-3 w-[260px]">
@@ -68,3 +77,4 @@ const FileReaderNode = ({ data, id }: NodeProps<FileReaderData>) => {
 };
 
 export default memo(FileReaderNode);
+

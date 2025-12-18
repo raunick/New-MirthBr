@@ -1,19 +1,28 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Timer } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface DelayNodeData {
     label: string;
     delay: number;
     unit: 'ms' | 's' | 'min';
-    onDataChange?: (field: string, value: string | number) => void;
 }
 
-const DelayNode = ({ data, id }: NodeProps<DelayNodeData>) => {
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * DelayNode - Delay utility node
+ * Refactored to access store directly (no callback injection)
+ */
+const DelayNode = ({ data }: NodeProps<DelayNodeData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     const getDisplayTime = () => {
         const delay = data.delay || 1000;
@@ -80,3 +89,4 @@ const DelayNode = ({ data, id }: NodeProps<DelayNodeData>) => {
 };
 
 export default memo(DelayNode);
+

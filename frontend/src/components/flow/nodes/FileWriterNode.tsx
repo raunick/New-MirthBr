@@ -1,6 +1,7 @@
-import React, { memo, useState } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useState, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { FileText, ChevronDown, ChevronRight, Settings2, HelpCircle } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface FileWriterData {
@@ -9,18 +10,25 @@ interface FileWriterData {
     filename?: string;
     append?: boolean;
     encoding?: string;
-    onDataChange?: (field: string, value: string | number | boolean) => void;
 }
 
 const ENCODING_OPTIONS = ['UTF-8', 'ISO-8859-1', 'ASCII', 'UTF-16'];
 
-const FileWriterNode = ({ data, id }: NodeProps<FileWriterData>) => {
+/**
+ * FileWriterNode - File destination node
+ * Refactored to access store directly (no callback injection)
+ */
+const FileWriterNode = ({ data }: NodeProps<FileWriterData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
     const [showAdvanced, setShowAdvanced] = useState(false);
     const [showTemplateHelp, setShowTemplateHelp] = useState(false);
 
-    const handleChange = (field: string, value: string | number | boolean) => {
-        data.onDataChange?.(field, value);
-    };
+    const handleChange = useCallback((field: string, value: string | number | boolean) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     return (
         <div className="flow-node destination px-4 py-3 w-[280px]">
@@ -140,4 +148,5 @@ const FileWriterNode = ({ data, id }: NodeProps<FileWriterData>) => {
 };
 
 export default memo(FileWriterNode);
+
 

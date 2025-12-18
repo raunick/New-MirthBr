@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Activity, Zap, Settings, LogOut, User, MessageSquare, Square, Play } from 'lucide-react';
+import { Activity, Zap, Settings, LogOut, User, MessageSquare, Square, Play, Book } from 'lucide-react';
 import Link from 'next/link';
 import axios from 'axios';
 import SettingsModal from './SettingsModal';
@@ -116,6 +116,11 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
                         <Link href="/messages" className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[var(--glass-bg)] transition-colors text-xs font-medium text-[var(--foreground-muted)] hover:text-[var(--foreground)] border border-transparent hover:border-[var(--glass-border)]">
                             <MessageSquare size={14} />
                             Messages
+                        </Link>
+
+                        <Link href="/docs" className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[var(--glass-bg)] transition-colors text-xs font-medium text-[var(--foreground-muted)] hover:text-[var(--foreground)] border border-transparent hover:border-[var(--glass-border)]">
+                            <Book size={14} />
+                            Docs
                         </Link>
                     </div>
 

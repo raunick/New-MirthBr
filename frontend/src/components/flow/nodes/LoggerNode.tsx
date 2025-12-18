@@ -1,13 +1,13 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { ScrollText } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface LoggerNodeData {
     label: string;
     level: 'debug' | 'info' | 'warn' | 'error';
     prefix: string;
-    onDataChange?: (field: string, value: string) => void;
 }
 
 const LEVEL_COLORS = {
@@ -17,10 +17,19 @@ const LEVEL_COLORS = {
     error: 'var(--error)',
 };
 
-const LoggerNode = ({ data, id }: NodeProps<LoggerNodeData>) => {
-    const handleChange = (field: string, value: string) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * LoggerNode - Logging utility node
+ * Refactored to access store directly (no callback injection)
+ */
+const LoggerNode = ({ data }: NodeProps<LoggerNodeData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+
+    const handleChange = useCallback((field: string, value: string) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     const level = data.level || 'info';
 
@@ -91,3 +100,4 @@ const LoggerNode = ({ data, id }: NodeProps<LoggerNodeData>) => {
 };
 
 export default memo(LoggerNode);
+

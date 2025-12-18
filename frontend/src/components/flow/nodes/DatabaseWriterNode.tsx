@@ -1,6 +1,7 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Database, Edit3 } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface DatabaseWriterData {
@@ -8,8 +9,6 @@ interface DatabaseWriterData {
     table: string;
     mode: string;
     query?: string;
-    onDataChange?: (field: string, value: string | number) => void;
-    onEditQuery?: (query: string) => void;
 }
 
 const modeOptions = [
@@ -19,10 +18,26 @@ const modeOptions = [
     { value: 'custom', label: 'Custom SQL' },
 ];
 
-const DatabaseWriterNode = ({ data, id }: NodeProps<DatabaseWriterData>) => {
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * DatabaseWriterNode - Database destination node
+ * Refactored to access store directly (no callback injection)
+ */
+const DatabaseWriterNode = ({ data }: NodeProps<DatabaseWriterData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+    const openEditor = useFlowStore((state) => state.openEditor);
+
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
+
+    const handleEditQuery = useCallback(() => {
+        if (nodeId) {
+            openEditor(nodeId, 'query', data.query || 'INSERT INTO table (col1, col2) VALUES (?, ?)');
+        }
+    }, [nodeId, openEditor, data.query]);
 
     const isCustomMode = data.mode === 'custom';
 
@@ -81,7 +96,7 @@ const DatabaseWriterNode = ({ data, id }: NodeProps<DatabaseWriterData>) => {
 
                 {isCustomMode && (
                     <button
-                        onClick={() => data.onEditQuery?.(data.query || '')}
+                        onClick={handleEditQuery}
                         className="w-full p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] 
                                  hover:border-[var(--node-destination-db)] transition-colors flex items-center justify-center gap-2
                                  text-sm text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
@@ -96,3 +111,4 @@ const DatabaseWriterNode = ({ data, id }: NodeProps<DatabaseWriterData>) => {
 };
 
 export default memo(DatabaseWriterNode);
+

@@ -1,13 +1,13 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { FileJson } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface HL7ParserData {
     label: string;
     inputFormat: string;
     outputFormat: string;
-    onDataChange?: (field: string, value: string | number) => void;
 }
 
 const formatOptions = [
@@ -18,10 +18,19 @@ const formatOptions = [
     { value: 'xml', label: 'XML' },
 ];
 
-const HL7ParserNode = ({ data, id }: NodeProps<HL7ParserData>) => {
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * HL7ParserNode - Format converter processor
+ * Refactored to access store directly (no callback injection)
+ */
+const HL7ParserNode = ({ data }: NodeProps<HL7ParserData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     return (
         <div className="flow-node processor px-4 py-3 w-[260px]">
@@ -89,3 +98,4 @@ const HL7ParserNode = ({ data, id }: NodeProps<HL7ParserData>) => {
 };
 
 export default memo(HL7ParserNode);
+

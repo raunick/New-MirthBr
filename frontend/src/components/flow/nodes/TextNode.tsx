@@ -1,29 +1,41 @@
-import React, { memo, useState, useEffect } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useState, useEffect, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Type, ChevronDown, ChevronUp } from 'lucide-react';
-import InlineEdit from '../InlineEdit';
 import { useFlowStore } from '@/stores/useFlowStore';
+import InlineEdit from '../InlineEdit';
 
 interface TextNodeData {
     label: string;
     text: string;
     isTemplate: boolean;
-    value?: string; // Resolved value after template processing
-    onDataChange?: (field: string, value: string | number | boolean) => void;
+    value?: string;
 }
 
-const TextNode = ({ data, id }: NodeProps<TextNodeData>) => {
+/**
+ * TextNode - Text/template utility node
+ * Refactored to access store directly (no callback injection)
+ */
+const TextNode = ({ data }: NodeProps<TextNodeData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
     const [expanded, setExpanded] = useState(false);
-    const nodes = useFlowStore((state) => state.nodes);
-    const edges = useFlowStore((state) => state.edges);
 
-    const handleChange = (field: string, value: string | number | boolean) => {
-        data.onDataChange?.(field, value);
-    };
+    // Stable selector pattern
+    const edges = useFlowStore((state) => state.edges);
+    const nodes = useFlowStore((state) => state.nodes);
+
+    const inputEdges = React.useMemo(() =>
+        edges.filter(e => e.target === nodeId),
+        [edges, nodeId]);
+
+    const handleChange = useCallback((field: string, value: string | number | boolean) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     // Template Resolution Logic
     useEffect(() => {
-        // If not a template, the value is just the text
         if (!data.isTemplate) {
             if (data.value !== data.text) {
                 handleChange('value', data.text);
@@ -31,8 +43,6 @@ const TextNode = ({ data, id }: NodeProps<TextNodeData>) => {
             return;
         }
 
-        // Find inputs connected to this node
-        const inputEdges = edges.filter(e => e.target === id);
         let solvedText = data.text || '';
 
         inputEdges.forEach(edge => {
@@ -42,7 +52,6 @@ const TextNode = ({ data, id }: NodeProps<TextNodeData>) => {
             const label = source.data.label;
             if (!label) return;
 
-            // Extract value based on node type
             let val: string = '';
 
             if (source.type === 'textNode') {
@@ -52,21 +61,11 @@ const TextNode = ({ data, id }: NodeProps<TextNodeData>) => {
             } else if (source.type === 'ipNode') {
                 val = String(source.data.ip ?? '');
             } else if (source.type === 'variableNode' && source.data.variables) {
-                // For variable node, we might want to support accessing keys directly?
-                // Or maybe just stringify? For now let's support exact match if user used variable node label?
-                // Actually variable node purpose is key-value store.
-                // If user does ${MyVars}, maybe JSON?
-                // But usually user connects Variable Node to offer variables.
-                // Let's skip deep variable node support for now unless user asked.
-                // They used PortNode -> TextNode.
                 val = '[Variables]';
             } else {
-                // Try generic value/text/label
                 val = String(source.data.value ?? source.data.text ?? source.data.label ?? '');
             }
 
-            // Replace ${Label} case-insensitive? Or exact? exact is safer.
-            // React Flow labels might have spaces.
             const pattern = new RegExp(`\\$\\{${label}\\}`, 'g');
             solvedText = solvedText.replace(pattern, val);
         });
@@ -74,7 +73,7 @@ const TextNode = ({ data, id }: NodeProps<TextNodeData>) => {
         if (solvedText !== data.value) {
             handleChange('value', solvedText);
         }
-    }, [nodes, edges, id, data.text, data.isTemplate, data.value]);
+    }, [inputEdges, nodes, nodeId, data.text, data.isTemplate, data.value, handleChange]);
 
     const textPreview = (data.value || data.text || '').substring(0, 40);
 
@@ -158,3 +157,4 @@ const TextNode = ({ data, id }: NodeProps<TextNodeData>) => {
 };
 
 export default memo(TextNode);
+

@@ -1,19 +1,28 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Wifi } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface IPNodeData {
     label: string;
     ip: string;
     subnet?: string;
-    onDataChange?: (field: string, value: string | number) => void;
 }
 
-const IPNode = ({ data, id }: NodeProps<IPNodeData>) => {
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * IPNode - IP configuration utility node
+ * Refactored to access store directly (no callback injection)
+ */
+const IPNode = ({ data }: NodeProps<IPNodeData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     return (
         <div className="flow-node utility px-4 py-3 w-[220px] border-l-4" style={{ borderLeftColor: 'var(--warning)' }}>
@@ -79,3 +88,4 @@ const IPNode = ({ data, id }: NodeProps<IPNodeData>) => {
 };
 
 export default memo(IPNode);
+

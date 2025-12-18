@@ -1,12 +1,12 @@
-import React, { memo, useState } from 'react';
-import { NodeProps } from 'reactflow';
+import React, { memo, useState, useCallback } from 'react';
+import { NodeProps, useNodeId } from 'reactflow';
 import { MessageSquare } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 
 interface CommentNodeData {
     label: string;
     text: string;
     color: string;
-    onDataChange?: (field: string, value: string) => void;
 }
 
 const COLORS = [
@@ -17,13 +17,21 @@ const COLORS = [
     { name: 'Purple', value: '#ede9fe' },
 ];
 
-const CommentNode = ({ data, id }: NodeProps<CommentNodeData>) => {
+/**
+ * CommentNode - Visual comment node
+ * Refactored to access store directly (no callback injection)
+ */
+const CommentNode = ({ data }: NodeProps<CommentNodeData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
     const [isEditing, setIsEditing] = useState(false);
     const backgroundColor = data.color || '#fef3c7';
 
-    const handleChange = (field: string, value: string) => {
-        data.onDataChange?.(field, value);
-    };
+    const handleChange = useCallback((field: string, value: string) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     return (
         <div
@@ -77,3 +85,4 @@ const CommentNode = ({ data, id }: NodeProps<CommentNodeData>) => {
 };
 
 export default memo(CommentNode);
+

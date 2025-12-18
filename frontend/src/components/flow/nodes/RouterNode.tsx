@@ -1,6 +1,7 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { GitBranch, Plus, X } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface Route {
@@ -11,36 +12,44 @@ interface Route {
 interface RouterData {
     label: string;
     routes: Route[];
-    onDataChange?: (field: string, value: any) => void;
 }
 
-const RouterNode = ({ data, id }: NodeProps<RouterData>) => {
+/**
+ * RouterNode - Content router processor
+ * Refactored to access store directly (no callback injection)
+ */
+const RouterNode = ({ data }: NodeProps<RouterData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+
     const routes = data.routes || [
         { name: 'Route A', condition: 'type == "A"' },
         { name: 'Route B', condition: 'type == "B"' },
     ];
 
-    const handleChange = (field: string, value: any) => {
-        data.onDataChange?.(field, value);
-    };
+    const handleChange = useCallback((field: string, value: any) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
-    const updateRoute = (index: number, field: 'name' | 'condition', value: string) => {
+    const updateRoute = useCallback((index: number, field: 'name' | 'condition', value: string) => {
         const newRoutes = [...routes];
         newRoutes[index] = { ...newRoutes[index], [field]: value };
         handleChange('routes', newRoutes);
-    };
+    }, [routes, handleChange]);
 
-    const addRoute = (e: React.MouseEvent) => {
+    const addRoute = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
         handleChange('routes', [...routes, { name: `Route ${routes.length + 1}`, condition: '' }]);
-    };
+    }, [routes, handleChange]);
 
-    const removeRoute = (e: React.MouseEvent, index: number) => {
+    const removeRoute = useCallback((e: React.MouseEvent, index: number) => {
         e.stopPropagation();
         if (routes.length > 1) {
             handleChange('routes', routes.filter((_, i) => i !== index));
         }
-    };
+    }, [routes, handleChange]);
 
     const colors = ['#f97316', '#3b82f6', '#22c55e', '#a855f7', '#ec4899'];
 
@@ -120,3 +129,4 @@ const RouterNode = ({ data, id }: NodeProps<RouterData>) => {
 };
 
 export default memo(RouterNode);
+

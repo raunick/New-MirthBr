@@ -1,13 +1,13 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { GitMerge } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface MergeNodeData {
     label: string;
     mode: 'first' | 'all' | 'concat';
     separator: string;
-    onDataChange?: (field: string, value: string) => void;
 }
 
 const MODES = [
@@ -16,10 +16,19 @@ const MODES = [
     { value: 'concat', label: 'Concat', description: 'Concatenate all messages' },
 ];
 
-const MergeNode = ({ data, id }: NodeProps<MergeNodeData>) => {
-    const handleChange = (field: string, value: string) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * MergeNode - Merge utility node
+ * Refactored to access store directly (no callback injection)
+ */
+const MergeNode = ({ data }: NodeProps<MergeNodeData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+
+    const handleChange = useCallback((field: string, value: string) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     const mode = data.mode || 'first';
     const selectedMode = MODES.find(m => m.value === mode);
@@ -115,3 +124,4 @@ const MergeNode = ({ data, id }: NodeProps<MergeNodeData>) => {
 };
 
 export default memo(MergeNode);
+

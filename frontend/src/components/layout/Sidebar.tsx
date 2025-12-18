@@ -8,7 +8,7 @@ import {
     Plus, Layers, ChevronDown, ChevronRight,
     // Utility icons
     Wifi, Hash, Type, Variable, MessageSquare,
-    Timer, ScrollText, Calculator, Clock, GitMerge
+    Timer, ScrollText, Calculator, Clock, GitMerge, Rocket
 } from 'lucide-react';
 
 interface NodeType {
@@ -139,6 +139,13 @@ const nodeCategories: NodeCategory[] = [
                 icon: Network,
                 color: 'var(--node-destination)',
                 description: 'Send via TCP'
+            },
+            {
+                type: 'deployNode',
+                label: 'Channel Terminal',
+                icon: Rocket,
+                color: 'var(--primary)',
+                description: 'Deploy & Control Channel'
             },
         ]
     },

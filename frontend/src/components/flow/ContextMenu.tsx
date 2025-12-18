@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback } from 'react';
-import { Copy, Trash2, Edit3, Play, Clipboard, Layers, X } from 'lucide-react';
+import { Copy, Trash2, Edit3, Play, Clipboard, Layers, X, Rocket } from 'lucide-react';
 
 interface ContextMenuProps {
     id: string;
@@ -182,6 +182,14 @@ const ContextMenu = ({
                 >
                     <Layers size={14} className="text-[var(--node-destination)]" />
                     Lua Destination
+                </button>
+                <div className="my-1 border-t border-[var(--glass-border)]" />
+                <button
+                    onClick={() => handleAction(() => onAddNode?.('deployNode'))}
+                    className="w-full px-3 py-2 flex items-center gap-3 text-sm text-[var(--foreground)] hover:bg-[var(--primary)]/10 rounded-md transition-colors"
+                >
+                    <Rocket size={14} className="text-[var(--primary)]" />
+                    Deploy Node
                 </button>
                 <div className="my-1 border-t border-[var(--glass-border)]" />
                 <button

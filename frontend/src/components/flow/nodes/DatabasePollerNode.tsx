@@ -1,20 +1,35 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Database, Edit3 } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface DatabasePollerData {
     label: string;
     query: string;
     interval: number;
-    onDataChange?: (field: string, value: string | number) => void;
-    onEditQuery?: (query: string) => void;
 }
 
-const DatabasePollerNode = ({ data, id }: NodeProps<DatabasePollerData>) => {
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * DatabasePollerNode - Database source node
+ * Refactored to access store directly (no callback injection)
+ */
+const DatabasePollerNode = ({ data }: NodeProps<DatabasePollerData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+    const openEditor = useFlowStore((state) => state.openEditor);
+
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
+
+    const handleEditQuery = useCallback(() => {
+        if (nodeId) {
+            openEditor(nodeId, 'query', data.query || 'SELECT * FROM table WHERE processed = false');
+        }
+    }, [nodeId, openEditor, data.query]);
 
     return (
         <div className="flow-node source-db px-4 py-3 w-[260px]">
@@ -50,7 +65,7 @@ const DatabasePollerNode = ({ data, id }: NodeProps<DatabasePollerData>) => {
                 </div>
 
                 <button
-                    onClick={() => data.onEditQuery?.(data.query || '')}
+                    onClick={handleEditQuery}
                     className="w-full p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] 
                              hover:border-[var(--node-source-db)] transition-colors flex items-center justify-center gap-2
                              text-sm text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
@@ -70,3 +85,4 @@ const DatabasePollerNode = ({ data, id }: NodeProps<DatabasePollerData>) => {
 };
 
 export default memo(DatabasePollerNode);
+

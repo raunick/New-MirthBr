@@ -1,29 +1,40 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback, useEffect } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Network } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface TCPSenderData {
     label: string;
     host: string;
     port: number;
-    onDataChange?: (field: string, value: string | number) => void;
 }
 
-import { useEffect } from 'react';
-import { useFlowStore } from '@/stores/useFlowStore';
+/**
+ * TCPSenderNode - TCP destination node
+ * Refactored to access store directly (no callback injection)
+ */
+const TCPSenderNode = ({ data }: NodeProps<TCPSenderData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
 
-const TCPSenderNode = ({ data, id }: NodeProps<TCPSenderData>) => {
-    const nodes = useFlowStore((state) => state.nodes);
     const edges = useFlowStore((state) => state.edges);
+    const nodes = useFlowStore((state) => state.nodes);
 
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+    // Stable usage of edges
+    const configEdges = React.useMemo(() =>
+        edges.filter(e => e.target === nodeId && e.targetHandle?.startsWith('config-')),
+        [edges, nodeId]);
+
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
     useEffect(() => {
         // Sync Port
-        const portEdge = edges.find(e => e.target === id && e.targetHandle === 'config-port');
+        const portEdge = configEdges.find(e => e.targetHandle === 'config-port');
         if (portEdge) {
             const node = nodes.find(n => n.id === portEdge.source);
             if (node?.type === 'portNode' && node.data.port !== undefined && node.data.port != data.port) {
@@ -31,14 +42,14 @@ const TCPSenderNode = ({ data, id }: NodeProps<TCPSenderData>) => {
             }
         }
         // Sync Host
-        const hostEdge = edges.find(e => e.target === id && e.targetHandle === 'config-host');
+        const hostEdge = configEdges.find(e => e.targetHandle === 'config-host');
         if (hostEdge) {
             const node = nodes.find(n => n.id === hostEdge.source);
             if (node?.type === 'ipNode' && node.data.ip !== undefined && node.data.ip != data.host) {
                 handleChange('host', node.data.ip);
             }
         }
-    }, [nodes, edges, id, data.port, data.host]);
+    }, [configEdges, nodes, data.port, data.host, handleChange]);
 
     return (
         <div className="flow-node destination px-4 py-3 w-[260px]">
@@ -108,3 +119,4 @@ const TCPSenderNode = ({ data, id }: NodeProps<TCPSenderData>) => {
 };
 
 export default memo(TCPSenderNode);
+

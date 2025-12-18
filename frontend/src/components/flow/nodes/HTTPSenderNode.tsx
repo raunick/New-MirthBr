@@ -1,13 +1,13 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback, useEffect } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Globe } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface HTTPSenderData {
     label: string;
     url: string;
     method: string;
-    onDataChange?: (field: string, value: string | number) => void;
 }
 
 const methodOptions = [
@@ -18,26 +18,37 @@ const methodOptions = [
     { value: 'DELETE', label: 'DELETE' },
 ];
 
-import { useEffect } from 'react';
-import { useFlowStore } from '@/stores/useFlowStore';
+/**
+ * HTTPSenderNode - HTTP destination node
+ * Refactored to access store directly (no callback injection)
+ */
+const HTTPSenderNode = ({ data }: NodeProps<HTTPSenderData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
 
-const HTTPSenderNode = ({ data, id }: NodeProps<HTTPSenderData>) => {
-    const nodes = useFlowStore((state) => state.nodes);
     const edges = useFlowStore((state) => state.edges);
+    const nodes = useFlowStore((state) => state.nodes);
 
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+    // Stable usage of edges
+    const configEdges = React.useMemo(() =>
+        edges.filter(e => e.target === nodeId && e.targetHandle?.startsWith('config-')),
+        [edges, nodeId]);
 
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
+
+    // Sync URL from connected nodes
     useEffect(() => {
-        const urlEdge = edges.find(e => e.target === id && e.targetHandle === 'config-url');
+        const urlEdge = configEdges.find(e => e.targetHandle === 'config-url');
         if (urlEdge) {
             const sourceNode = nodes.find(n => n.id === urlEdge.source);
             if (sourceNode) {
                 let newUrl = data.url || '';
                 try {
                     let currentStr = newUrl.startsWith('http') ? newUrl : `http://${newUrl}`;
-                    // If empty or invalid, default to http://localhost
                     if (!newUrl || newUrl === 'https://api.example.com') currentStr = 'http://localhost';
 
                     const urlObj = new URL(currentStr);
@@ -62,7 +73,7 @@ const HTTPSenderNode = ({ data, id }: NodeProps<HTTPSenderData>) => {
                 }
             }
         }
-    }, [nodes, edges, id, data.url]);
+    }, [configEdges, nodes, nodeId, data.url, handleChange]);
 
     const getMethodColor = (method: string) => {
         switch (method) {
@@ -136,3 +147,4 @@ const HTTPSenderNode = ({ data, id }: NodeProps<HTTPSenderData>) => {
 };
 
 export default memo(HTTPSenderNode);
+

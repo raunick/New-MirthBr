@@ -1,19 +1,35 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { Code2, Edit3 } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
+import './BaseNode.css';
 
 interface LuaScriptData {
     label: string;
     code: string;
-    onDataChange?: (field: string, value: string | number) => void;
-    onEdit?: (code: string) => void;
 }
 
-const LuaScriptNode = ({ data, id }: NodeProps<LuaScriptData>) => {
-    const handleChange = (field: string, value: string | number) => {
-        data.onDataChange?.(field, value);
-    };
+/**
+ * LuaScriptNode - Processor node for Lua script execution
+ * Refactored to access store directly (no callback injection)
+ */
+const LuaScriptNode = ({ data }: NodeProps<LuaScriptData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
+    const openEditor = useFlowStore((state) => state.openEditor);
+
+    const handleChange = useCallback((field: string, value: string | number) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
+
+    const handleEditCode = useCallback(() => {
+        if (nodeId) {
+            openEditor(nodeId, 'code', data.code || '');
+        }
+    }, [nodeId, openEditor, data.code]);
 
     const codePreview = (data.code || '').split('\n')[0]?.substring(0, 25) || 'Empty script';
 
@@ -48,7 +64,7 @@ const LuaScriptNode = ({ data, id }: NodeProps<LuaScriptData>) => {
             </div>
 
             <button
-                onClick={() => data.onEdit?.(data.code || '')}
+                onClick={handleEditCode}
                 className="w-full p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] 
                          hover:border-[var(--node-processor)] transition-colors flex items-center justify-center gap-2
                          text-sm text-[var(--foreground-muted)] hover:text-[var(--foreground)]"
@@ -67,3 +83,4 @@ const LuaScriptNode = ({ data, id }: NodeProps<LuaScriptData>) => {
 };
 
 export default memo(LuaScriptNode);
+

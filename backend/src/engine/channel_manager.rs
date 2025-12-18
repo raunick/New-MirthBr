@@ -281,7 +281,7 @@ impl ChannelManager {
                 if let Some(dedup) = &dedup_store_for_processor {
                     match dedup.is_duplicate(&channel_id.to_string(), &msg.content).await {
                         Ok(true) => {
-                            tracing::info!(channel = %processor_channel_name, message_id = %msg.id, "Message is duplicate, skipping");
+                            tracing::info!(channel = %processor_channel_name, message_id = %msg.id, origin = %origin, "Message is duplicate, skipping");
                             // Update status to DUPLICATE
                             if let Some(store) = &store_for_processor {
                                 let _ = store.update_status(&msg_id_str, MessageStatus::FILTERED, Some("Duplicate message".to_string())).await;

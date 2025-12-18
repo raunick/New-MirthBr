@@ -80,14 +80,14 @@ impl TcpListener {
                         tokio::spawn(async move {
                             match acceptor.accept(socket).await {
                                 Ok(stream) => {
-                                    handle_connection(stream, addr, channel_id, sender_clone, store_clone).await;
+                                    handle_connection(stream, addr, channel_id, sender_clone, store_clone, port).await;
                                 },
                                 Err(e) => tracing::error!("TLS Handshake failed from {}: {}", addr, e),
                             }
                         });
                     } else {
                         tokio::spawn(async move {
-                            handle_connection(socket, addr, channel_id, sender_clone, store_clone).await;
+                            handle_connection(socket, addr, channel_id, sender_clone, store_clone, port).await;
                         });
                     }
                 }
@@ -99,7 +99,7 @@ impl TcpListener {
     }
 }
 
-async fn handle_connection<S>(mut socket: S, addr: SocketAddr, channel_id: Uuid, sender: mpsc::Sender<Message>, store: Option<MessageStore>) 
+async fn handle_connection<S>(mut socket: S, addr: SocketAddr, channel_id: Uuid, sender: mpsc::Sender<Message>, store: Option<MessageStore>, local_port: u16) 
 where S: AsyncReadExt + AsyncWriteExt + Unpin
 {
     tracing::info!("Accepted connection from {}", addr);
@@ -128,7 +128,7 @@ where S: AsyncReadExt + AsyncWriteExt + Unpin
                 let messages = accumulator.feed(data);
                 
                 for content in messages {
-                    let origin = format!("TCP :{} from {}", addr.port(), addr.ip());
+                    let origin = format!("TCP :{} from {}", local_port, addr);
                     tracing::info!("Received complete MLLP message from {}", origin);
                     
                     // 2. Persist

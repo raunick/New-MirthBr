@@ -1,0 +1,185 @@
+/* BaseNode Styles */
+.base-node {
+    position: relative;
+    padding: 12px 16px;
+    border-radius: 12px;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(12px);
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+/* Selected state glow */
+.base-node[data-selected="true"] {
+    border-color: var(--node-category-color, var(--primary));
+    box-shadow:
+        0 0 0 2px color-mix(in srgb, var(--node-category-color, var(--primary)) 30%, transparent),
+        0 8px 32px -8px color-mix(in srgb, var(--node-category-color, var(--primary)) 40%, transparent);
+}
+
+/* Category border accent */
+.base-node.utility {
+    border-left-width: 4px;
+}
+
+/* Header section */
+.base-node__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.base-node__icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.base-node__titles {
+    flex: 1;
+    min-width: 0;
+}
+
+.base-node__label {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--foreground);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.base-node__subtitle {
+    font-size: 12px;
+    color: var(--foreground-muted);
+}
+
+.base-node__content {
+    min-width: 0;
+    /* Allows text truncation in flex children */
+}
+
+/* Status Indicator - positioned top-right */
+.base-node__status {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.base-node__status--loading {
+    background: var(--warning);
+    animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+.base-node__status--success {
+    background: var(--success);
+    animation: status-pop 0.3s ease-out;
+}
+
+.base-node__status--error {
+    background: var(--error);
+    animation: status-shake 0.4s ease-out;
+}
+
+/* Status Animations (CSS Pure) */
+@keyframes status-pulse {
+
+    0%,
+    100% {
+        opacity: 1;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 0.5;
+        transform: scale(1.2);
+    }
+}
+
+@keyframes status-pop {
+    0% {
+        transform: scale(0);
+    }
+
+    50% {
+        transform: scale(1.3);
+    }
+
+    100% {
+        transform: scale(1);
+    }
+}
+
+@keyframes status-shake {
+
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+
+    20%,
+    60% {
+        transform: translateX(-2px);
+    }
+
+    40%,
+    80% {
+        transform: translateX(2px);
+    }
+}
+
+/* Standalone StatusIndicator component */
+.status-indicator {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    font-size: 10px;
+    font-weight: bold;
+}
+
+.status-indicator--loading {
+    background: var(--warning);
+    color: var(--background);
+}
+
+.status-indicator--loading .status-indicator__pulse {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: inherit;
+    animation: status-pulse 1.5s ease-in-out infinite;
+}
+
+.status-indicator--success {
+    background: var(--success);
+    color: white;
+}
+
+.status-indicator--error {
+    background: var(--error);
+    color: white;
+}
+
+/* Loading state for entire node */
+.base-node--loading {
+    border-color: var(--warning);
+}
+
+.base-node--success {
+    border-color: var(--success);
+}
+
+.base-node--error {
+    border-color: var(--error);
+}

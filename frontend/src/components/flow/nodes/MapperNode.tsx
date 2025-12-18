@@ -1,6 +1,7 @@
-import React, { memo } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { memo, useCallback } from 'react';
+import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
 import { ArrowRightLeft, Plus, X } from 'lucide-react';
+import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
 
 interface Mapping {
@@ -11,31 +12,38 @@ interface Mapping {
 interface MapperData {
     label: string;
     mappings: Mapping[];
-    onDataChange?: (field: string, value: any) => void;
 }
 
-const MapperNode = ({ data, id }: NodeProps<MapperData>) => {
+/**
+ * MapperNode - Field mapping processor
+ * Refactored to access store directly (no callback injection)
+ */
+const MapperNode = ({ data }: NodeProps<MapperData>) => {
+    const nodeId = useNodeId();
+    const updateNodeData = useFlowStore((state) => state.updateNodeData);
     const mappings = data.mappings || [{ source: 'field1', target: 'newField1' }];
 
-    const handleChange = (field: string, value: any) => {
-        data.onDataChange?.(field, value);
-    };
+    const handleChange = useCallback((field: string, value: any) => {
+        if (nodeId) {
+            updateNodeData(nodeId, field, value);
+        }
+    }, [nodeId, updateNodeData]);
 
-    const updateMapping = (index: number, field: 'source' | 'target', value: string) => {
+    const updateMapping = useCallback((index: number, field: 'source' | 'target', value: string) => {
         const newMappings = [...mappings];
         newMappings[index] = { ...newMappings[index], [field]: value };
         handleChange('mappings', newMappings);
-    };
+    }, [mappings, handleChange]);
 
-    const addMapping = (e: React.MouseEvent) => {
+    const addMapping = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
         handleChange('mappings', [...mappings, { source: '', target: '' }]);
-    };
+    }, [mappings, handleChange]);
 
-    const removeMapping = (e: React.MouseEvent, index: number) => {
+    const removeMapping = useCallback((e: React.MouseEvent, index: number) => {
         e.stopPropagation();
         handleChange('mappings', mappings.filter((_, i) => i !== index));
-    };
+    }, [mappings, handleChange]);
 
     return (
         <div className="flow-node processor-mapper px-4 py-3 w-[280px]">
@@ -116,3 +124,4 @@ const MapperNode = ({ data, id }: NodeProps<MapperData>) => {
 };
 
 export default memo(MapperNode);
+
