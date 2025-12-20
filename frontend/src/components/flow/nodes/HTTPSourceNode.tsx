@@ -88,21 +88,27 @@ const HTTPSourceNode = ({ data }: NodeProps<HTTPSourceData>) => {
             label={data.label || 'HTTP Listener'}
             subtitle={isTlsEnabled ? 'HTTPS Source' : 'HTTP Source'}
             className="w-[280px]"
+            showTargetHandle={false}  // We use custom config handles instead
         >
             <div className="space-y-2">
                 {/* Port Configuration */}
                 <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] relative group">
-                    {/* Config Handle - Always visible but subtle */}
+                    {/* Config Handle - Larger and more visible with pulsing */}
                     <Handle
                         type="target"
                         position={Position.Left}
                         id="config-port"
-                        className="!w-2.5 !h-2.5 !bg-[var(--warning)] !border-2 !border-[var(--background)] transition-all hover:scale-125"
-                        style={{ left: '-6px', top: '50%', transform: 'translateY(-50%)' }}
-                        title="Connect Port Node to configure dynamically"
+                        className="config-handle !w-3.5 !h-3.5 !bg-[var(--warning)] !border-2 !border-[var(--background)]"
+                        style={{ left: '-8px', top: '50%', transform: 'translateY(-50%)' }}
                     />
                     <div className="flex items-center justify-between">
-                        <span className="text-xs text-[var(--foreground-muted)] font-medium" title="Port detection">Port</span>
+                        <div className="flex items-center gap-1.5">
+                            <div
+                                className="w-2 h-2 rounded-full bg-[var(--warning)]/60 group-hover:bg-[var(--warning)] transition-colors"
+                                title="Connect PortNode or TextNode"
+                            />
+                            <span className="text-xs text-[var(--foreground-muted)] font-medium">Port</span>
+                        </div>
                         <InlineEdit
                             value={data.port || 8080}
                             onChange={(v) => handleChange('port', v)}
@@ -115,18 +121,23 @@ const HTTPSourceNode = ({ data }: NodeProps<HTTPSourceData>) => {
                 </div>
 
                 {/* Path Configuration */}
-                <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] relative">
-                    <div className="flex items-center justify-between group">
-                        {/* Config Handle */}
-                        <Handle
-                            type="target"
-                            position={Position.Left}
-                            id="config-path"
-                            className="!w-2.5 !h-2.5 !bg-[var(--warning)] !border-2 !border-[var(--background)] transition-all hover:scale-125"
-                            style={{ left: '-14px', top: '50%', transform: 'translateY(-50%)' }}
-                            title="Connect Text Node to configure path"
-                        />
-                        <span className="text-xs text-[var(--foreground-muted)] font-medium">Path</span>
+                <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] relative group">
+                    {/* Config Handle - for path config */}
+                    <Handle
+                        type="target"
+                        position={Position.Left}
+                        id="config-path"
+                        className="config-handle !w-3.5 !h-3.5 !bg-[var(--warning)] !border-2 !border-[var(--background)]"
+                        style={{ left: '-8px', top: '50%', transform: 'translateY(-50%)' }}
+                    />
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-1.5">
+                            <div
+                                className="w-2 h-2 rounded-full bg-[var(--warning)]/60 group-hover:bg-[var(--warning)] transition-colors"
+                                title="Connect TextNode"
+                            />
+                            <span className="text-xs text-[var(--foreground-muted)] font-medium">Path</span>
+                        </div>
                         <InlineEdit
                             value={data.path || '/'}
                             onChange={(v) => handleChange('path', v)}
@@ -137,6 +148,7 @@ const HTTPSourceNode = ({ data }: NodeProps<HTTPSourceData>) => {
                         />
                     </div>
                 </div>
+
 
                 {/* TLS Configuration Section */}
                 <div className="rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] overflow-hidden">

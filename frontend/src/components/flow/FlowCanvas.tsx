@@ -27,15 +27,12 @@ import RouterNode from './nodes/RouterNode';
 import HL7ParserNode from './nodes/HL7ParserNode';
 
 // Destination Nodes
+// Destination Nodes
 import FileWriterNode from './nodes/FileWriterNode';
 import HTTPSenderNode from './nodes/HTTPSenderNode';
 import DatabaseWriterNode from './nodes/DatabaseWriterNode';
 import TCPSenderNode from './nodes/TCPSenderNode';
 import LuaDestinationNode from './nodes/LuaDestinationNode';
-import DeployNode from './nodes/DeployNode';
-
-// Special Nodes
-import TestNode from './nodes/TestNode';
 
 // Utility Nodes
 import IPNode from './nodes/IPNode';
@@ -54,9 +51,19 @@ import LuaEditorModal from '../editor/LuaEditorModal';
 import ChannelSettingsModal from './ChannelSettingsModal';
 import { Button } from '@/components/ui/button';
 import { exportToRust } from '@/lib/flow-compiler';
-import { deployChannel, testChannel } from '@/lib/api';
+import { deployChannel, testChannel, deleteChannel } from '@/lib/api';
 import { validateConnection } from '@/lib/connectionValidation';
-import { Play, Save, Layout, Download, Upload, Settings, FilePlus } from 'lucide-react';
+import { Play, Save, Layout, Download, Upload, Settings, FilePlus, Trash2, AlertTriangle } from 'lucide-react';
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import axios from 'axios';
 
 const nodeTypes = {
@@ -72,14 +79,12 @@ const nodeTypes = {
     router: RouterNode,
     hl7Parser: HL7ParserNode,
     // Destinations
+    // Destinations
     fileWriter: FileWriterNode,
     httpSender: HTTPSenderNode,
     databaseWriter: DatabaseWriterNode,
     tcpSender: TCPSenderNode,
     luaDestination: LuaDestinationNode,
-    // Special
-    testNode: TestNode,
-    deployNode: DeployNode,
     // Utility Nodes
     ipNode: IPNode,
     portNode: PortNode,
@@ -94,8 +99,6 @@ const nodeTypes = {
 };
 
 interface FlowCanvasProps {
-    onDeploySuccess?: () => void;
-    onDeployError?: () => void;
 }
 
 interface MenuState {
@@ -106,7 +109,7 @@ interface MenuState {
     y: number;
 }
 
-function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
+function FlowCanvasInner({ }: FlowCanvasProps) {
     const reactFlowWrapper = useRef<HTMLDivElement>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { screenToFlowPosition } = useReactFlow();
@@ -115,7 +118,7 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
         nodes, edges, onNodesChange, onEdgesChange, onConnect,
         setNodes, updateNodeData, deleteNode, duplicateNode, deleteEdge,
         addNodeAtPosition, saveFlow, loadFlow, exportFlow, importFlow,
-        channelName, setChannelName,
+        channelName, setChannelName, channelId,
         maxRetries, setMaxRetries,
         isRunning, setRunning,
         errorDestinationId, setErrorDestinationId,
@@ -125,6 +128,7 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
     } = useFlowStore();
 
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+    const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
     const [isDeploying, setIsDeploying] = useState(false);
     const [menu, setMenu] = useState<MenuState | null>(null);
 
@@ -219,6 +223,27 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
         }
     }, [resetFlow]);
 
+    const handleDeleteChannelClick = () => {
+        setIsDeleteDialogOpen(true);
+    };
+
+    const handleConfirmDeleteChannel = useCallback(async () => {
+        try {
+            if (channelId) {
+                await deleteChannel(channelId);
+            }
+            // Reset flow ONLY after successful deletion
+            resetFlow();
+            setIsDeleteDialogOpen(false);
+        } catch (error: any) {
+            console.error("Failed to delete channel", error);
+            const msg = error.response?.data?.error || error.message || "Unknown error";
+            alert(`Failed to delete channel: ${msg}`);
+            // Do NOT reset flow if deletion fails, so user can see it's still there
+            setIsDeleteDialogOpen(false);
+        }
+    }, [channelId, resetFlow]);
+
     const handleDownload = useCallback(() => {
         exportFlow();
     }, [exportFlow]);
@@ -270,56 +295,51 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
             />
 
             {/* Toolbar */}
-            <div className="absolute top-4 right-4 z-10 flex gap-2 items-center">
-                <input
-                    type="text"
-                    value={channelName}
-                    onChange={(e) => setChannelName(e.target.value)}
-                    placeholder="Nome do Canal"
-                    className="h-9 px-3 rounded-md bg-[var(--glass-bg)] border border-[var(--glass-border)] text-[var(--foreground)] placeholder-[var(--foreground-muted)] focus:outline-none focus:ring-1 focus:ring-[var(--primary)] w-48 text-sm"
-                />
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleNewChannel}
-                    className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
-                    title="Create New Channel"
-                >
-                    <FilePlus size={16} className="mr-2" />
-                    New Channel
-                </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleUpload}
-                    className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
-                    title="Carregar workflow de arquivo"
-                >
-                    <Upload size={16} className="mr-2" />
-                    Upload
-                </Button>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDownload}
-                    className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
-                    title="Baixar workflow como arquivo"
-                >
-                    <Download size={16} className="mr-2" />
-                    Download
-                </Button>
-                {/* Save button removed */}
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setIsSettingsOpen(true)}
-                    className="glass border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-bg)]"
-                    title="Channel Settings (DLQ)"
-                >
-                    <Settings size={16} className="mr-2" />
-                    Settings
-                </Button>
-                {/* Deploy button removed (replaced by DeployNode) */}
+            <div className="absolute top-4 right-4 z-10 flex flex-col gap-2 items-end">
+                {/* Channel Name */}
+                <div className="flex gap-2 items-center p-1.5 rounded-lg glass border border-[var(--glass-border)] shadow-sm">
+                    <input
+                        type="text"
+                        value={channelName}
+                        onChange={(e) => setChannelName(e.target.value)}
+                        placeholder="Nome do Canal"
+                        className="h-8 px-3 rounded-md bg-[var(--background-secondary)]/50 border border-transparent focus:border-[var(--primary)] text-[var(--foreground)] placeholder-[var(--foreground-muted)] focus:outline-none focus:ring-0 w-56 text-sm transition-all"
+                    />
+                </div>
+
+                {/* Actions Row */}
+                <div className="flex gap-2">
+                    {/* File Actions */}
+                    <div className="flex items-center p-1 gap-0.5 rounded-lg glass border border-[var(--glass-border)] shadow-sm">
+                        <Button variant="ghost" size="icon" onClick={handleNewChannel} title="New Channel" className="h-8 w-8 text-[var(--foreground-muted)] hover:text-[var(--foreground)] hover:bg-[var(--glass-border)]">
+                            <FilePlus size={16} />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={handleUpload} title="Upload" className="h-8 w-8 text-[var(--foreground-muted)] hover:text-[var(--foreground)] hover:bg-[var(--glass-border)]">
+                            <Upload size={16} />
+                        </Button>
+                        <Button variant="ghost" size="icon" onClick={handleDownload} title="Download" className="h-8 w-8 text-[var(--foreground-muted)] hover:text-[var(--foreground)] hover:bg-[var(--glass-border)]">
+                            <Download size={16} />
+                        </Button>
+                    </div>
+
+                    {/* Settings */}
+                    <div className="flex items-center p-1 rounded-lg glass border border-[var(--glass-border)] shadow-sm">
+                        <Button variant="ghost" size="icon" onClick={() => setIsSettingsOpen(true)} title="Settings" className="h-8 w-8 text-[var(--foreground-muted)] hover:text-[var(--foreground)] hover:bg-[var(--glass-border)]">
+                            <Settings size={16} />
+                        </Button>
+                    </div>
+
+                    {/* Delete */}
+                    <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={handleDeleteChannelClick}
+                        className="h-10 w-10 glass border border-red-500/20 text-red-500 hover:text-red-600 hover:bg-red-500/10 hover:border-red-500/40 transition-all shadow-sm rounded-lg"
+                        title="Delete Channel"
+                    >
+                        <Trash2 size={16} />
+                    </Button>
+                </div>
             </div>
 
             <ChannelSettingsModal
@@ -333,6 +353,24 @@ function FlowCanvasInner({ onDeploySuccess, onDeployError }: FlowCanvasProps) {
                     setMaxRetries(retries);
                 }}
             />
+
+            <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+                <AlertDialogContent className="glass-card border-red-500/20">
+                    <AlertDialogHeader>
+                        <div className="flex items-center gap-2 text-red-500 mb-2">
+                            <AlertTriangle className="h-5 w-5" />
+                            <AlertDialogTitle>Delete Channel?</AlertDialogTitle>
+                        </div>
+                        <AlertDialogDescription className="text-[var(--foreground-muted)]">
+                            Are you sure you want to delete this channel? This action cannot be undone and will stop the channel if it is currently running.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel className="bg-transparent border-[var(--glass-border)] text-[var(--foreground)] hover:bg-[var(--glass-border)] hover:text-white">Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleConfirmDeleteChannel} className="bg-red-500 hover:bg-red-600 text-white border-none">Delete Channel</AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
 
             <ReactFlow
                 nodes={nodes}

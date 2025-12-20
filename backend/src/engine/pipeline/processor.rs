@@ -82,7 +82,7 @@ impl PipelineProcessor {
                         if let Some(tx_arc) = &msg.response_tx {
                             if let Ok(mut tx_opt) = tx_arc.lock() {
                                 if let Some(tx) = tx_opt.take() {
-                                    let _ = tx.send(Ok("Duplicate message skipped".to_string()));
+                                    let _ = tx.send(Ok("Message skipped: Duplicate detected. Change payload content to process again.".to_string()));
                                 }
                             }
                         }
@@ -286,7 +286,7 @@ impl PipelineProcessor {
              if let Some(tx_arc) = &msg.response_tx {
                 if let Ok(mut tx_opt) = tx_arc.lock() {
                     if let Some(tx) = tx_opt.take() {
-                        let _ = tx.send(Ok("Processed".to_string()));
+                        let _ = tx.send(Ok("Message Processed Successfully".to_string()));
                     }
                 }
             }

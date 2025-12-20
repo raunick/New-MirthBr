@@ -16,9 +16,6 @@ export const nodeDefaults: Record<string, NodeData> = {
     httpSender: { label: 'HTTP Sender', url: 'https://api.example.com', method: 'POST' },
     databaseWriter: { label: 'Database Writer', table: 'messages', mode: 'insert' },
     tcpSender: { label: 'TCP Sender', host: '127.0.0.1', port: 9000 },
-    // Special
-    testNode: { label: 'Test Node', payloadType: 'hl7', payload: 'MSH|^~\\&|...' },
-    deployNode: { label: 'Channel Terminal' },
     // Utility Nodes
     ipNode: { label: 'IP Address', ip: '127.0.0.1', subnet: '255.255.255.0' },
     portNode: { label: 'Port', port: 1234, protocol: 'TCP' },

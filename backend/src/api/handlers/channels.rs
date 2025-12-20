@@ -101,6 +101,32 @@ pub async fn stop_channel(
     }
 }
 
+pub async fn delete_channel(
+    State(manager): State<Arc<ChannelManager>>,
+    axum::extract::Path(id_str): axum::extract::Path<String>,
+) -> impl IntoResponse {
+     tracing::info!("🗑️ Received delete request for channel ID: {}", id_str);
+
+    let id = match Uuid::parse_str(&id_str) {
+        Ok(uuid) => uuid,
+        Err(e) => {
+             tracing::error!("❌ Invalid channel ID format for delete: {} ({})", id_str, e);
+             return (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": "Invalid channel ID format", "details": e.to_string() }))).into_response();
+        }
+    };
+
+    match manager.delete_channel(id).await {
+        Ok(_) => {
+             tracing::info!("✅ Channel {} deleted successfully via API", id);
+            (StatusCode::OK, Json(serde_json::json!({ "status": "deleted", "message": "Channel deleted successfully" }))).into_response()
+        },
+        Err(e) => {
+             tracing::error!("❌ Failed to delete channel {}: {}", id, e);
+            (StatusCode::INTERNAL_SERVER_ERROR, Json(serde_json::json!({ "error": e.to_string() }))).into_response()
+        }
+    }
+}
+
 pub async fn get_active_channels(
     State(manager): State<Arc<ChannelManager>>,
 ) -> impl IntoResponse {

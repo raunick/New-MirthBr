@@ -2,7 +2,7 @@ import axios, { AxiosError } from 'axios';
 
 // Get API configuration from environment variables
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'dev-key-change-in-production-32chars';
+export const API_KEY = process.env.NEXT_PUBLIC_API_KEY || 'dev-key-change-in-production-32chars';
 
 // Security warnings (client-side only)
 if (typeof window !== 'undefined') {
@@ -331,6 +331,23 @@ export const stopChannel = async (channelId: string) => {
             'STOP_ERROR',
             500,
             'Erro ao parar o canal.'
+        );
+    }
+};
+
+export const deleteChannel = async (channelId: string) => {
+    try {
+        const response = await api.delete(`/channels/${channelId}`);
+        return response.data;
+    } catch (error) {
+        if (error instanceof ApiError) {
+            throw error;
+        }
+        throw new ApiError(
+            'Failed to delete channel',
+            'DELETE_ERROR',
+            500,
+            'Erro ao excluir o canal.'
         );
     }
 };

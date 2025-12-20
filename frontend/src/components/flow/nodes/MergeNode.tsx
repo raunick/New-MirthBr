@@ -1,8 +1,10 @@
 import React, { memo, useCallback } from 'react';
-import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
+import { NodeProps, useNodeId, Position } from 'reactflow';
 import { GitMerge } from 'lucide-react';
 import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
+import BaseNode from './BaseNode';
+import './BaseNode.css';
 
 interface MergeNodeData {
     label: string;
@@ -18,7 +20,7 @@ const MODES = [
 
 /**
  * MergeNode - Merge utility node
- * Refactored to access store directly (no callback injection)
+ * Refactored to use BaseNode with multiple target handles
  */
 const MergeNode = ({ data }: NodeProps<MergeNodeData>) => {
     const nodeId = useNodeId();
@@ -34,46 +36,19 @@ const MergeNode = ({ data }: NodeProps<MergeNodeData>) => {
     const selectedMode = MODES.find(m => m.value === mode);
 
     return (
-        <div className="flow-node utility px-4 py-3 w-[220px] border-l-4" style={{ borderLeftColor: 'var(--warning)' }}>
-            {/* Multiple input handles */}
-            <Handle
-                type="target"
-                position={Position.Left}
-                id="input-1"
-                style={{ top: '30%' }}
-                className="!w-3 !h-3 !bg-[var(--warning)] !border-2 !border-[var(--background)]"
-            />
-            <Handle
-                type="target"
-                position={Position.Left}
-                id="input-2"
-                style={{ top: '50%' }}
-                className="!w-3 !h-3 !bg-[var(--warning)] !border-2 !border-[var(--background)]"
-            />
-            <Handle
-                type="target"
-                position={Position.Left}
-                id="input-3"
-                style={{ top: '70%' }}
-                className="!w-3 !h-3 !bg-[var(--warning)] !border-2 !border-[var(--background)]"
-            />
-
-            <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-lg bg-[var(--warning)]/20 flex items-center justify-center">
-                    <GitMerge size={20} className="text-[var(--warning)]" />
-                </div>
-                <div className="flex-1">
-                    <InlineEdit
-                        value={data.label || 'Merge'}
-                        onChange={(v) => handleChange('label', String(v))}
-                        className="text-sm font-semibold text-[var(--foreground)]"
-                        displayClassName="hover:text-[var(--primary)] cursor-text"
-                        inputClassName="bg-transparent border-b border-[var(--primary)] outline-none w-full"
-                    />
-                    <div className="text-xs text-[var(--foreground-muted)]">Combine Inputs</div>
-                </div>
-            </div>
-
+        <BaseNode
+            category="utility"
+            icon={<GitMerge size={20} className="text-[var(--warning)]" />}
+            label={data.label || 'Merge'}
+            subtitle="Combine Inputs"
+            width="220px"
+            showTargetHandle={false}  // We use custom multi-input handles
+            targetHandles={[
+                { id: 'input-1', label: 'Input 1', style: { top: '30%' } },
+                { id: 'input-2', label: 'Input 2', style: { top: '50%' } },
+                { id: 'input-3', label: 'Input 3', style: { top: '70%' } },
+            ]}
+        >
             <div className="space-y-2">
                 <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)]">
                     <div className="flex items-center justify-between mb-1">
@@ -110,18 +85,16 @@ const MergeNode = ({ data }: NodeProps<MergeNodeData>) => {
                 )}
             </div>
 
-            <div className="mt-2 text-xs text-[var(--foreground-muted)] text-center">
-                3 input handles
+            <div className="mt-2 text-xs text-[var(--foreground-muted)] text-center flex items-center justify-center gap-1">
+                <div className="flex gap-1">
+                    <div className="w-2 h-2 rounded-full bg-[var(--warning)]" />
+                    <div className="w-2 h-2 rounded-full bg-[var(--warning)]" />
+                    <div className="w-2 h-2 rounded-full bg-[var(--warning)]" />
+                </div>
+                3 inputs
             </div>
-
-            <Handle
-                type="source"
-                position={Position.Right}
-                className="!w-3 !h-3 !bg-[var(--warning)] !border-2 !border-[var(--background)]"
-            />
-        </div>
+        </BaseNode>
     );
 };
 
 export default memo(MergeNode);
-

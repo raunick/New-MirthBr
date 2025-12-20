@@ -7,19 +7,31 @@ import { useAuthStore } from '@/stores/useAuthStore';
 import { useFlowStore } from '@/stores/useFlowStore';
 
 interface HeaderProps {
-    isConnected?: boolean;
-    lastDeployStatus?: 'success' | 'error' | 'idle';
     onToggleLogs?: () => void;
     onToggleMetrics?: () => void;
     onTestChannel?: () => void;
 }
 
-export default function Header({ isConnected: initialConnected = false, lastDeployStatus = 'idle', onToggleLogs, onToggleMetrics, onTestChannel }: HeaderProps) {
-    const [isConnected, setIsConnected] = useState(initialConnected);
+export default function Header({ onToggleLogs, onToggleMetrics, onTestChannel }: Omit<HeaderProps, 'isConnected' | 'lastDeployStatus'>) {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const { username, logout } = useAuthStore();
-    const { isRunning, stopCurrentChannel } = useFlowStore();
-    const [isStopping, setIsStopping] = useState(false);
+    const {
+        isRunning,
+        executeDeploy,
+        toggleChannelStatus,
+        channelStatus,
+        deployStatus,
+        deployErrorMessage
+    } = useFlowStore();
+
+    // Status tracking for header actions
+    const DEPLOY_ID = 'header-deploy'; // ID for tracking deploy status in this component
+    const currentDeployStatus = deployStatus[DEPLOY_ID] || 'idle';
+    const isDeploying = currentDeployStatus === 'loading';
+    const hasError = currentDeployStatus === 'error';
+
+    // Backend health check (keep local state for connectivity)
+    const [isConnected, setIsConnected] = useState(false);
 
     useEffect(() => {
         const checkHealth = async () => {
@@ -43,20 +55,21 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
         }
     };
 
-    const handleStop = async () => {
-        setIsStopping(true);
-        try {
-            await stopCurrentChannel();
-        } catch (e) {
-            alert("Erro ao parar canal");
-        } finally {
-            setIsStopping(false);
+    const handleDeploy = async () => {
+        await executeDeploy(DEPLOY_ID);
+    };
+
+    const handleToggleChannel = async () => {
+        if (isRunning) {
+            await toggleChannelStatus(DEPLOY_ID, 'offline');
+        } else {
+            await toggleChannelStatus(DEPLOY_ID, 'online');
         }
     };
 
     return (
         <>
-            <header className="h-16 glass border-b border-[var(--glass-border)] flex items-center justify-between px-6">
+            <header className="h-16 glass border-b border-[var(--glass-border)] flex items-center justify-between px-6 z-40 relative">
                 {/* Logo Section */}
                 <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--primary)] to-[var(--secondary)] flex items-center justify-center">
@@ -70,25 +83,53 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
 
                 {/* Status Section */}
                 <div className="flex items-center gap-6">
-                    <div className="flex gap-2">
-                        {/* Channel Status & Control */}
-                        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[var(--background-secondary)]/30 border border-[var(--glass-border)] mr-2">
-                            <div className={`w-2 h-2 rounded-full ${isRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-500'}`} />
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--foreground-muted)] mr-2">
+                    {/* Channel Controls Group */}
+                    <div className="flex items-center bg-[var(--background-secondary)]/30 border border-[var(--glass-border)] rounded-lg p-1 gap-1">
+
+                        {/* Deploy Button */}
+                        <button
+                            onClick={handleDeploy}
+                            disabled={isDeploying}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all text-xs font-bold uppercase tracking-wider ${hasError ? 'bg-red-500/10 text-red-500 border border-red-500/20' :
+                                currentDeployStatus === 'success' ? 'bg-green-500/10 text-green-500 border border-green-500/20' :
+                                    'hover:bg-[var(--primary)]/10 text-[var(--foreground)] border border-transparent hover:border-[var(--primary)]/20'
+                                }`}
+                            title={hasError ? deployErrorMessage || "Deploy Failed" : "Deploy Changes"}
+                        >
+                            {isDeploying ? (
+                                <div className="w-3 h-3 border-2 border-current border-t-transparent animate-spin rounded-full" />
+                            ) : (
+                                <Settings size={14} className={currentDeployStatus === 'success' ? "text-green-500" : ""} />
+                            )}
+                            {hasError ? 'Error' : isDeploying ? 'Deploying' : 'Deploy'}
+                        </button>
+
+                        <div className="w-px h-4 bg-[var(--glass-border)] mx-1" />
+
+                        {/* Start/Stop Toggle */}
+                        <div className="flex items-center gap-2">
+                            <span className={`text-[10px] font-bold uppercase tracking-wider ml-1 ${isRunning ? 'text-green-500' : 'text-[var(--foreground-muted)]'}`}>
                                 {isRunning ? 'Running' : 'Stopped'}
                             </span>
-                            {isRunning && (
-                                <button
-                                    onClick={handleStop}
-                                    disabled={isStopping}
-                                    className="p-1 hover:bg-red-500/20 text-red-400 rounded transition-colors disabled:opacity-50"
-                                    title="Stop Channel"
-                                >
-                                    {isStopping ? <div className="w-3 h-3 border-2 border-current border-t-transparent animate-spin rounded-full" /> : <Square size={12} fill="currentColor" />}
-                                </button>
-                            )}
+                            <button
+                                onClick={handleToggleChannel}
+                                disabled={isDeploying}
+                                className={`relative w-10 h-5 rounded-full transition-colors duration-300 focus:outline-none ${isRunning ? 'bg-green-500' : 'bg-[var(--glass-border)]'
+                                    }`}
+                                title={isRunning ? "Stop Channel" : "Start Channel"}
+                            >
+                                <div className={`absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-300 flex items-center justify-center ${isRunning ? 'translate-x-5' : 'translate-x-0'
+                                    }`}>
+                                    {isRunning ? <Square size={8} className="text-green-600 fill-current" /> : <Play size={8} className="text-gray-400 fill-current" />}
+                                </div>
+                            </button>
                         </div>
+                    </div>
 
+                    <div className="h-6 w-px bg-[var(--glass-border)]" />
+
+                    {/* Tools Group */}
+                    <div className="flex gap-2">
                         <button
                             onClick={onTestChannel}
                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--background-secondary)]/50 hover:bg-[var(--glass-bg)] border border-[var(--glass-border)] transition-all text-xs font-semibold text-[var(--primary)] hover:text-[var(--primary-hover)] hover:shadow-lg hover:shadow-[var(--primary)]/10"
@@ -102,7 +143,7 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
                             className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[var(--glass-bg)] transition-colors text-xs font-medium text-[var(--foreground-muted)] hover:text-[var(--foreground)] border border-transparent hover:border-[var(--glass-border)]"
                         >
                             <Activity size={14} />
-                            View Logs
+                            Logs
                         </button>
 
                         <button
@@ -112,63 +153,39 @@ export default function Header({ isConnected: initialConnected = false, lastDepl
                             <Activity size={14} className="text-[var(--primary)]" />
                             Metrics
                         </button>
-
-                        <Link href="/messages" className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[var(--glass-bg)] transition-colors text-xs font-medium text-[var(--foreground-muted)] hover:text-[var(--foreground)] border border-transparent hover:border-[var(--glass-border)]">
-                            <MessageSquare size={14} />
-                            Messages
-                        </Link>
-
-                        <Link href="/docs" className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-[var(--glass-bg)] transition-colors text-xs font-medium text-[var(--foreground-muted)] hover:text-[var(--foreground)] border border-transparent hover:border-[var(--glass-border)]">
-                            <Book size={14} />
-                            Docs
-                        </Link>
                     </div>
 
+                    <div className="h-6 w-px bg-[var(--glass-border)]" />
+
                     {/* Backend Status indicator */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2" title={isConnected ? 'Backend Connected' : 'Backend Disconnected'}>
                         <div className={`w-2 h-2 rounded-full ${isConnected ? 'bg-[var(--success)] status-pulse' : 'bg-[var(--error)]'}`} />
-                        <span className="text-sm text-[var(--foreground-muted)]">
-                            {isConnected ? 'Backend' : 'No Connection'}
+                        <span className="text-xs text-[var(--foreground-muted)] hidden xl:inline">
+                            {isConnected ? 'Online' : 'Offline'}
                         </span>
                     </div>
 
-                    {/* Last Deploy Status badge */}
-                    {lastDeployStatus !== 'idle' && (
-                        <div className="flex items-center gap-2 px-3 py-1 rounded-full glass border border-[var(--glass-border)]">
-                            <Activity size={14} className={lastDeployStatus === 'success' ? 'text-[var(--success)]' : 'text-[var(--error)]'} />
-                            <span className="text-xs text-[var(--foreground-muted)]">
-                                {lastDeployStatus === 'success' ? 'Deploy OK' : 'Deploy Failed'}
-                            </span>
-                        </div>
-                    )}
-
-                    <div className="h-4 w-px bg-[var(--glass-border)] mx-2" />
-
                     {/* User Info */}
                     {username && (
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[var(--background-secondary)]/30 border border-[var(--glass-border)]">
-                            <User size={14} className="text-[var(--foreground-muted)]" />
-                            <span className="text-sm text-[var(--foreground-muted)] capitalize">{username}</span>
+                        <div className="flex items-center gap-2 pl-2">
+                            <span className="text-xs text-[var(--foreground-muted)] capitalize hidden sm:inline">Hi, {username}</span>
+                            <button
+                                onClick={handleLogout}
+                                className="p-1.5 rounded hover:bg-black/20 text-[var(--foreground-muted)] hover:text-red-400 transition-colors"
+                                title="Sign Out"
+                            >
+                                <LogOut size={16} />
+                            </button>
                         </div>
                     )}
 
-                    {/* Settings Button */}
+                    {/* Config Button (Global Settings? Maybe redundant with new deploy controls) */}
                     <button
                         onClick={() => setIsSettingsOpen(true)}
-                        className="p-2 rounded-lg hover:bg-[var(--glass-bg)] transition-colors"
-                        title="Configurações"
+                        className="p-2 rounded-lg hover:bg-[var(--glass-bg)] transition-colors text-[var(--foreground-muted)]"
+                        title="Channel Configurations"
                     >
-                        <Settings size={20} className="text-[var(--foreground-muted)]" />
-                    </button>
-
-                    {/* Logout Button */}
-                    <button
-                        onClick={handleLogout}
-                        className="flex items-center gap-2 px-3 py-1.5 rounded-lg hover:bg-red-500/10 border border-transparent hover:border-red-500/30 transition-all text-[var(--foreground-muted)] hover:text-red-400"
-                        title="Sair"
-                    >
-                        <LogOut size={16} />
-                        <span className="text-xs font-medium">Sair</span>
+                        <Settings size={20} />
                     </button>
                 </div>
             </header>

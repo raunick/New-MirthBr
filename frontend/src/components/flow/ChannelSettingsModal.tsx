@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Node } from 'reactflow';
 import { AlertCircle, Save, X, RotateCcw } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface ChannelSettingsModalProps {
     isOpen: boolean;
@@ -128,9 +129,12 @@ export default function ChannelSettingsModal({
                                 ))}
                             </select>
                             {destinationNodes.length === 0 && (
-                                <p className="text-xs text-yellow-500/80 mt-1 italic">
-                                    No destination nodes found in the flow. Add a file writer or sender to enable DLQ.
-                                </p>
+                                <Alert variant="warning" className="mt-2 text-xs">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <AlertDescription>
+                                        No destination nodes found in the flow. Add a file writer or sender to enable DLQ.
+                                    </AlertDescription>
+                                </Alert>
                             )}
                         </div>
                     </div>

@@ -1,8 +1,10 @@
-import React, { memo, useCallback } from 'react';
-import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
+import React, { memo, useCallback, useMemo } from 'react';
+import { NodeProps, useNodeId, Position } from 'reactflow';
 import { GitBranch, Plus, X } from 'lucide-react';
 import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
+import BaseNode, { HandleConfig } from './BaseNode';
+import './BaseNode.css';
 
 interface Route {
     name: string;
@@ -14,9 +16,11 @@ interface RouterData {
     routes: Route[];
 }
 
+const ROUTE_COLORS = ['#f97316', '#3b82f6', '#22c55e', '#a855f7', '#ec4899'];
+
 /**
  * RouterNode - Content router processor
- * Refactored to access store directly (no callback injection)
+ * Refactored to use BaseNode with dynamic sourceHandles
  */
 const RouterNode = ({ data }: NodeProps<RouterData>) => {
     const nodeId = useNodeId();
@@ -51,39 +55,38 @@ const RouterNode = ({ data }: NodeProps<RouterData>) => {
         }
     }, [routes, handleChange]);
 
-    const colors = ['#f97316', '#3b82f6', '#22c55e', '#a855f7', '#ec4899'];
+    // Generate dynamic source handles from routes
+    const sourceHandles: HandleConfig[] = useMemo(() =>
+        routes.map((route, index) => ({
+            id: `route-${index}`,
+            color: ROUTE_COLORS[index % ROUTE_COLORS.length],
+            label: route.name,
+            style: { top: `${30 + (index * 18)}%` }
+        })),
+        [routes]
+    );
 
     return (
-        <div className="flow-node processor px-4 py-3 w-[260px]">
-            <Handle
-                type="target"
-                position={Position.Left}
-                className="!w-3 !h-3 !bg-[var(--node-processor)] !border-2 !border-[var(--background)]"
-            />
-
-            <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-lg bg-[var(--node-processor)]/20 flex items-center justify-center">
-                    <GitBranch size={20} className="text-[var(--node-processor)]" />
-                </div>
-                <div className="flex-1">
-                    <InlineEdit
-                        value={data.label || 'Content Router'}
-                        onChange={(v) => handleChange('label', v)}
-                        className="text-sm font-semibold text-[var(--foreground)]"
-                        displayClassName="hover:text-[var(--primary)] cursor-text"
-                        inputClassName="bg-transparent border-b border-[var(--primary)] outline-none w-full"
-                    />
-                    <div className="text-xs text-[var(--foreground-muted)]">Router</div>
-                </div>
-            </div>
-
+        <BaseNode
+            category="processor"
+            icon={<GitBranch size={20} className="text-[var(--node-processor)]" />}
+            label={data.label || 'Content Router'}
+            subtitle="Router"
+            width="260px"
+            showSourceHandle={false}  // We use dynamic sourceHandles
+            sourceHandles={sourceHandles}
+        >
             <div className="space-y-1.5 max-h-[140px] overflow-y-auto pr-1">
                 {routes.map((route, index) => (
                     <div
                         key={index}
                         className="flex items-center gap-2 p-1.5 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)]"
-                        style={{ borderLeftColor: colors[index % colors.length], borderLeftWidth: 3 }}
+                        style={{ borderLeftColor: ROUTE_COLORS[index % ROUTE_COLORS.length], borderLeftWidth: 3 }}
                     >
+                        <div
+                            className="w-2 h-2 rounded-full flex-shrink-0"
+                            style={{ backgroundColor: ROUTE_COLORS[index % ROUTE_COLORS.length] }}
+                        />
                         <InlineEdit
                             value={route.name}
                             onChange={(v) => updateRoute(index, 'name', String(v))}
@@ -110,23 +113,8 @@ const RouterNode = ({ data }: NodeProps<RouterData>) => {
                 <Plus size={12} />
                 Add Route
             </button>
-
-            {routes.map((route, index) => (
-                <Handle
-                    key={index}
-                    type="source"
-                    position={Position.Right}
-                    id={`route-${index}`}
-                    style={{
-                        top: `${30 + (index * 20)}%`,
-                        background: colors[index % colors.length]
-                    }}
-                    className="!w-3 !h-3 !border-2 !border-[var(--background)]"
-                />
-            ))}
-        </div>
+        </BaseNode>
     );
 };
 
 export default memo(RouterNode);
-

@@ -13,7 +13,7 @@ export default function MetricsDashboard({ isOpen, onClose }: MetricsDashboardPr
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-y-0 right-0 w-[400px] glass shadow-2xl border-l border-[var(--glass-border)] transform transition-transform duration-300 z-50 flex flex-col">
+        <div className="fixed inset-y-0 right-0 w-[450px] bg-slate-900/90 backdrop-blur-2xl shadow-2xl border-l border-[var(--glass-border)] transform transition-transform duration-300 z-50 flex flex-col">
             {/* Header */}
             <div className="h-14 border-b border-[var(--glass-border)] flex items-center justify-between px-4">
                 <div className="flex items-center gap-2">

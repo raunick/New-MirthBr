@@ -1,8 +1,10 @@
 import React, { memo, useCallback } from 'react';
-import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
+import { NodeProps, useNodeId } from 'reactflow';
 import { Hash } from 'lucide-react';
 import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
+import BaseNode from './BaseNode';
+import './BaseNode.css';
 
 interface PortNodeData {
     label: string;
@@ -12,7 +14,7 @@ interface PortNodeData {
 
 /**
  * PortNode - Port configuration utility node
- * Refactored to access store directly (no callback injection)
+ * Refactored to use BaseNode for consistent styling
  */
 const PortNode = ({ data }: NodeProps<PortNodeData>) => {
     const nodeId = useNodeId();
@@ -25,29 +27,13 @@ const PortNode = ({ data }: NodeProps<PortNodeData>) => {
     }, [nodeId, updateNodeData]);
 
     return (
-        <div className="flow-node utility px-4 py-3 w-[200px] border-l-4" style={{ borderLeftColor: 'var(--warning)' }}>
-            <Handle
-                type="target"
-                position={Position.Left}
-                className="!w-3 !h-3 !bg-[var(--warning)] !border-2 !border-[var(--background)]"
-            />
-
-            <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-lg bg-[var(--warning)]/20 flex items-center justify-center">
-                    <Hash size={20} className="text-[var(--warning)]" />
-                </div>
-                <div className="flex-1">
-                    <InlineEdit
-                        value={data.label || 'Port'}
-                        onChange={(v) => handleChange('label', v)}
-                        className="text-sm font-semibold text-[var(--foreground)]"
-                        displayClassName="hover:text-[var(--primary)] cursor-text"
-                        inputClassName="bg-transparent border-b border-[var(--primary)] outline-none w-full"
-                    />
-                    <div className="text-xs text-[var(--foreground-muted)]">Port Config</div>
-                </div>
-            </div>
-
+        <BaseNode
+            category="utility"
+            icon={<Hash size={20} className="text-[var(--warning)]" />}
+            label={data.label || 'Port'}
+            subtitle="Port Config"
+            width="200px"
+        >
             <div className="space-y-2">
                 <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)]">
                     <div className="flex items-center justify-between">
@@ -78,15 +64,8 @@ const PortNode = ({ data }: NodeProps<PortNodeData>) => {
                     </div>
                 </div>
             </div>
-
-            <Handle
-                type="source"
-                position={Position.Right}
-                className="!w-3 !h-3 !bg-[var(--warning)] !border-2 !border-[var(--background)]"
-            />
-        </div>
+        </BaseNode>
     );
 };
 
 export default memo(PortNode);
-

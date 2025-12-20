@@ -77,4 +77,13 @@ impl DeduplicationStore {
 
         Ok(result.rows_affected())
     }
+
+    /// Clear all dedup entries for a specific channel
+    pub async fn clear_channel(&self, channel_id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM processed_ids WHERE channel_id = ?")
+            .bind(channel_id)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
 }

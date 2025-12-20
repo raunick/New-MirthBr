@@ -1,9 +1,9 @@
 import { Node, Edge, Connection } from 'reactflow';
 
 // Node category definitions
-const SOURCE_TYPES = ['httpListener', 'tcpListener', 'fileReader', 'databasePoller', 'testNode'];
+const SOURCE_TYPES = ['httpListener', 'tcpListener', 'fileReader', 'databasePoller'];
 const PROCESSOR_TYPES = ['luaScript', 'mapper', 'filter', 'router', 'hl7Parser'];
-const DESTINATION_TYPES = ['fileWriter', 'httpSender', 'databaseWriter', 'tcpSender'];
+const DESTINATION_TYPES = ['fileWriter', 'httpSender', 'databaseWriter', 'tcpSender', 'luaDestination'];
 const UTILITY_TYPES = ['ipNode', 'portNode', 'textNode', 'variableNode', 'commentNode', 'delayNode', 'loggerNode', 'counterNode', 'timestampNode', 'mergeNode'];
 
 export type NodeCategory = 'source' | 'processor' | 'destination' | 'utility';
@@ -46,8 +46,7 @@ export function isValidConnection(
     }
 
     // Destination nodes cannot be source of a connection
-    // EXCEPTION: Destination nodes CAN connect to DeployNode (Channel Terminal)
-    if (sourceCategory === 'destination' && targetType !== 'deployNode') {
+    if (sourceCategory === 'destination') {
         return false;
     }
 
@@ -57,11 +56,6 @@ export function isValidConnection(
 
     if (targetCategory === 'source' && targetType !== 'mergeNode' && !isConfigHandle) {
         return false;
-    }
-
-    // Allow connections to DeployNode (Channel Terminal)
-    if (targetType === 'deployNode') {
-        return true;
     }
 
     // Prevent self-connections
@@ -167,8 +161,6 @@ export function getMaxConnections(nodeType: string): { input: number; output: nu
             return { input: 1, output: 2 }; // pass and reject
         case 'commentNode':
             return { input: 0, output: 0 };
-        case 'deployNode':
-            return { input: 1, output: 0 };
         default:
             if (category === 'source') return { input: 0, output: 1 };
             if (category === 'destination') return { input: 1, output: 0 };

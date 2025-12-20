@@ -1,8 +1,10 @@
 import React, { memo, useState, useEffect, useCallback } from 'react';
-import { Handle, Position, NodeProps, useNodeId } from 'reactflow';
+import { NodeProps, useNodeId } from 'reactflow';
 import { Type, ChevronDown, ChevronUp } from 'lucide-react';
 import { useFlowStore } from '@/stores/useFlowStore';
 import InlineEdit from '../InlineEdit';
+import BaseNode from './BaseNode';
+import './BaseNode.css';
 
 interface TextNodeData {
     label: string;
@@ -13,7 +15,7 @@ interface TextNodeData {
 
 /**
  * TextNode - Text/template utility node
- * Refactored to access store directly (no callback injection)
+ * Refactored to use BaseNode for consistent styling
  */
 const TextNode = ({ data }: NodeProps<TextNodeData>) => {
     const nodeId = useNodeId();
@@ -78,31 +80,13 @@ const TextNode = ({ data }: NodeProps<TextNodeData>) => {
     const textPreview = (data.value || data.text || '').substring(0, 40);
 
     return (
-        <div className="flow-node utility px-4 py-3 w-[260px] border-l-4" style={{ borderLeftColor: 'var(--warning)' }}>
-            <Handle
-                type="target"
-                position={Position.Left}
-                className="!w-3 !h-3 !bg-[var(--warning)] !border-2 !border-[var(--background)]"
-            />
-
-            <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-lg bg-[var(--warning)]/20 flex items-center justify-center">
-                    <Type size={20} className="text-[var(--warning)]" />
-                </div>
-                <div className="flex-1">
-                    <InlineEdit
-                        value={data.label || 'Text'}
-                        onChange={(v) => handleChange('label', v)}
-                        className="text-sm font-semibold text-[var(--foreground)]"
-                        displayClassName="hover:text-[var(--primary)] cursor-text"
-                        inputClassName="bg-transparent border-b border-[var(--primary)] outline-none w-full"
-                    />
-                    <div className="text-xs text-[var(--foreground-muted)]">
-                        {data.isTemplate ? 'Template' : 'Constant'}
-                    </div>
-                </div>
-            </div>
-
+        <BaseNode
+            category="utility"
+            icon={<Type size={20} className="text-[var(--warning)]" />}
+            label={data.label || 'Text'}
+            subtitle={data.isTemplate ? 'Template' : 'Constant'}
+            width="260px"
+        >
             <div className="space-y-2">
                 <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)]">
                     <div className="flex items-center justify-between mb-2">
@@ -146,15 +130,8 @@ const TextNode = ({ data }: NodeProps<TextNodeData>) => {
                     <span className="text-xs text-[var(--foreground-muted)]">Is Template (supports {'${var}'})</span>
                 </label>
             </div>
-
-            <Handle
-                type="source"
-                position={Position.Right}
-                className="!w-3 !h-3 !bg-[var(--warning)] !border-2 !border-[var(--background)]"
-            />
-        </div>
+        </BaseNode>
     );
 };
 
 export default memo(TextNode);
-

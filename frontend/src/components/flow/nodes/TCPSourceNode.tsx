@@ -74,28 +74,27 @@ const TCPSourceNode = ({ data }: NodeProps<TCPSourceData>) => {
             label={data.label || 'TCP Listener'}
             subtitle={isTlsEnabled ? 'TLS/TCP Source' : 'TCP Source'}
             className="w-[280px]"
-            // Customizing category color for TCP if different from standard source? 
-            // BaseNode uses 'source' which is var(--node-source). TCPSourceNode original CSS used var(--node-source-tcp).
-            // BaseCode.css probably defines .source. Let's check if we need to override style or if .source covers it.
-            // If I want to match original TCP color, I might need to inject style or changing category.
-            // But let's stick to standard 'source' for consistency unless 'source-tcp' was visually distinct enough to keep.
-            // Looking at original TCPSourceNode.tsx, it had className="flow-node source-tcp".
-            // I'll check BaseNode.css later. For now, I'll pass style prop to override if needed.
+            showTargetHandle={false}  // We use custom config handle instead
             style={{ '--node-category-color': 'var(--node-source-tcp, var(--node-source))' } as React.CSSProperties}
         >
             <div className="space-y-2">
                 <div className="p-2 rounded-lg bg-[var(--background)]/50 border border-[var(--glass-border)] relative group">
-                    {/* Config Handle - Always visible but subtle */}
+                    {/* Config Handle - Larger and more visible with pulsing */}
                     <Handle
                         type="target"
                         position={Position.Left}
                         id="config-port"
-                        className="!w-2.5 !h-2.5 !bg-[var(--warning)] !border-2 !border-[var(--background)] transition-all hover:scale-125"
-                        style={{ left: '-6px', top: '50%', transform: 'translateY(-50%)' }}
-                        title="Connect Port Node to configure dynamically"
+                        className="config-handle !w-3.5 !h-3.5 !bg-[var(--warning)] !border-2 !border-[var(--background)]"
+                        style={{ left: '-8px', top: '50%', transform: 'translateY(-50%)' }}
                     />
                     <div className="flex items-center justify-between">
-                        <span className="text-xs text-[var(--foreground-muted)] font-medium" title="Port detection">Port</span>
+                        <div className="flex items-center gap-1.5">
+                            <div
+                                className="w-2 h-2 rounded-full bg-[var(--warning)]/60 group-hover:bg-[var(--warning)] transition-colors"
+                                title="Connect PortNode or TextNode"
+                            />
+                            <span className="text-xs text-[var(--foreground-muted)] font-medium">Port</span>
+                        </div>
                         <InlineEdit
                             value={data.port || 9090}
                             onChange={(v) => handleChange('port', v)}

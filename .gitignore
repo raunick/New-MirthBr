@@ -3,6 +3,8 @@
 
 # Backend (Rust)
 backend/target/
+backend/output/*
+backend/mirth.db
 backend/**/*.rs.bk
 *.log
 backend/output.txt

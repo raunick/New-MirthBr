@@ -185,14 +185,6 @@ const ContextMenu = ({
                 </button>
                 <div className="my-1 border-t border-[var(--glass-border)]" />
                 <button
-                    onClick={() => handleAction(() => onAddNode?.('deployNode'))}
-                    className="w-full px-3 py-2 flex items-center gap-3 text-sm text-[var(--foreground)] hover:bg-[var(--primary)]/10 rounded-md transition-colors"
-                >
-                    <Rocket size={14} className="text-[var(--primary)]" />
-                    Deploy Node
-                </button>
-                <div className="my-1 border-t border-[var(--glass-border)]" />
-                <button
                     onClick={() => handleAction(() => onPaste?.())}
                     className="w-full px-3 py-2 flex items-center gap-3 text-sm text-[var(--foreground)] hover:bg-[var(--primary)]/10 rounded-md transition-colors"
                 >

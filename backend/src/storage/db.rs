@@ -1,6 +1,5 @@
 use sqlx::{sqlite::{SqlitePool, SqlitePoolOptions}, Row};
 
-use tokio::fs;
 
 #[derive(Clone)]
 pub struct Database {
@@ -9,14 +8,14 @@ pub struct Database {
 
 impl Database {
     pub async fn new(database_url: &str) -> Result<Self, sqlx::Error> {
-        // Ensure the db file exists
-        if !std::path::Path::new("mirth.db").exists() {
-            fs::File::create("mirth.db").await.map_err(|e| sqlx::Error::Io(e))?;
-        }
+        // Use SqliteConnectOptions to handle file creation and path parsing
+        let options = std::str::FromStr::from_str(database_url)
+            .map(|opt: sqlx::sqlite::SqliteConnectOptions| opt.create_if_missing(true))
+            .map_err(|e| sqlx::Error::Configuration(Box::new(e)))?;
 
         let pool = SqlitePoolOptions::new()
             .max_connections(5)
-            .connect(database_url)
+            .connect_with(options)
             .await?;
 
         let db = Self { pool };
@@ -97,6 +96,14 @@ impl Database {
         .execute(&self.pool)
         .await?;
         
+        Ok(())
+    }
+
+    pub async fn delete_channel(&self, id: &str) -> Result<(), sqlx::Error> {
+        sqlx::query("DELETE FROM channels WHERE id = ?")
+            .bind(id)
+            .execute(&self.pool)
+            .await?;
         Ok(())
     }
 

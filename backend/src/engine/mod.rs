@@ -6,3 +6,4 @@ pub mod message;
 pub mod retry_worker;
 pub mod cleanup_worker;
 pub mod pipeline;
+pub mod init;

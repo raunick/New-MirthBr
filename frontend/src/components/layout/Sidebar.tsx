@@ -58,13 +58,6 @@ const nodeCategories: NodeCategory[] = [
                 color: 'var(--node-source-db)',
                 description: 'Poll database for new data'
             },
-            {
-                type: 'testNode',
-                label: 'Test Node',
-                icon: PlayCircle,
-                color: 'var(--primary)',
-                description: 'Manual message trigger'
-            },
         ]
     },
     {
@@ -139,13 +132,6 @@ const nodeCategories: NodeCategory[] = [
                 icon: Network,
                 color: 'var(--node-destination)',
                 description: 'Send via TCP'
-            },
-            {
-                type: 'deployNode',
-                label: 'Channel Terminal',
-                icon: Rocket,
-                color: 'var(--primary)',
-                description: 'Deploy & Control Channel'
             },
         ]
     },

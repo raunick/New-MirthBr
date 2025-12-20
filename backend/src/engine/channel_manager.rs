@@ -125,6 +125,23 @@ impl ChannelManager {
         }
     }
 
+    pub async fn delete_channel(&self, channel_id: Uuid) -> anyhow::Result<()> {
+        // 1. Stop channel if running (ignore if not running)
+        match self.stop_channel(channel_id).await {
+            Ok(_) => tracing::info!("Channel {} stopped before deletion", channel_id),
+            Err(e) => tracing::warn!("Channel {} was not running or failed to stop: {}", channel_id, e),
+        }
+
+        // 2. Delete from DB
+        if let Some(db) = &self.db {
+            db.delete_channel(&channel_id.to_string()).await.map_err(|e| anyhow::anyhow!("DB Error: {}", e))?;
+        }
+        
+        tracing::info!("Channel {} deleted (stopped and removed from DB)", channel_id);
+        self.add_log("INFO", format!("Channel {} deleted", channel_id), None);
+        Ok(())
+    }
+
     pub async fn start_channel(&self, channel: Channel, frontend_schema: Option<serde_json::Value>) -> anyhow::Result<()> {
         let channel_id = channel.id;
         tracing::info!("Starting channel: {} ({})", channel.name, channel_id);
@@ -150,6 +167,15 @@ impl ChannelManager {
         
         // Remove old sender to ensure no stale references
         self.senders.lock().unwrap().remove(&channel_id);
+
+        // Clear dedup cache for this channel on start/deploy to allow re-testing
+        if let Some(dedup) = &self.dedup_store {
+            if let Err(e) = dedup.clear_channel(&channel_id.to_string()).await {
+                tracing::warn!("Failed to clear deduplication cache for channel {}: {}", channel_id, e);
+            } else {
+                tracing::info!("Cleared deduplication cache for channel {}", channel_id);
+            }
+        }
 
         // 1. Create communication channel (MPSC)
         let (tx, rx) = mpsc::channel(100);
@@ -342,17 +368,30 @@ impl ChannelManager {
         Ok(())
     }
 
-    pub async fn inject_message(&self, channel_id: Uuid, payload: String) -> anyhow::Result<()> {
+    pub async fn inject_message(&self, channel_id: Uuid, payload: String) -> anyhow::Result<String> {
         let sender = {
             let senders = self.senders.lock().unwrap();
             senders.get(&channel_id).cloned()
         };
 
         if let Some(tx) = sender {
-             let msg = crate::engine::message::Message::new(channel_id, payload, "Manual Injection".to_string());
+             let mut msg = crate::engine::message::Message::new(channel_id, payload, "Manual Injection".to_string());
+             
+             // Create response channel
+             let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
+             msg.response_tx = Some(Arc::new(Mutex::new(Some(resp_tx))));
+
             tx.send(msg).await.map_err(|_| anyhow::anyhow!("Channel receiver dropped"))?;
             self.add_log("INFO", "Manual message injected".to_string(), Some(channel_id));
-            Ok(())
+            
+            // Wait for response (Sync wait just like HTTP listener)
+            match tokio::time::timeout(std::time::Duration::from_secs(30), resp_rx).await {
+                Ok(Ok(Ok(response))) => Ok(response),
+                Ok(Ok(Err(proc_err))) => Err(anyhow::anyhow!("{}", proc_err)), // Return purely the error string, don't wrap in "Processing Error"
+                 Ok(Err(_)) => Err(anyhow::anyhow!("Response channel closed unexpectedly")),
+                Err(_) => Err(anyhow::anyhow!("Timeout waiting for processing"))
+            }
+
         } else {
             Err(anyhow::anyhow!("Channel not found or not running"))
         }

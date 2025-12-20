@@ -232,7 +232,7 @@ async fn handler(
     match tokio::time::timeout(Duration::from_secs(30), rx).await {
         Ok(result) => {
             match result {
-                Ok(Ok(_)) => (StatusCode::OK, "Message Processed Successfully".to_string()),
+                Ok(Ok(msg)) => (StatusCode::OK, msg),
                 Ok(Err(error_msg)) => {
                     tracing::warn!("Request failed validation/processing: {}", error_msg);
                     (StatusCode::BAD_REQUEST, error_msg) 

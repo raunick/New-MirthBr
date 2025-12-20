@@ -1,4 +1,4 @@
-
+import { API_KEY } from '@/lib/api';
 import { create } from 'zustand';
 import { useAuthStore } from '../stores/useAuthStore';
 import { useEffect, useRef, useState } from 'react';
@@ -28,7 +28,7 @@ export const useMetrics = () => {
     useEffect(() => {
         if (!sessionToken) return;
 
-        const wsUrl = `ws://localhost:3001/api/ws/metrics?token=${sessionToken}`;
+        const wsUrl = `ws://localhost:3001/api/ws/metrics?token=${API_KEY}`;
         const ws = new WebSocket(wsUrl);
         socketRef.current = ws;
 

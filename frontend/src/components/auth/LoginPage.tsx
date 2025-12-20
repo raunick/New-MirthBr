@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuthStore, LoginResult } from '@/stores/useAuthStore';
 import { Eye, EyeOff, Lock, User, AlertCircle, Loader2, Shield } from 'lucide-react';
+import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 
 interface LoginPageProps {
     onLoginSuccess: () => void;
@@ -96,23 +97,21 @@ export default function LoginPage({ onLoginSuccess }: LoginPageProps) {
                     <form onSubmit={handleSubmit} className="space-y-5">
                         {/* Error Message */}
                         {error && (
-                            <div className="flex items-start gap-3 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-400">
-                                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-                                <p className="text-sm">{error}</p>
-                            </div>
+                            <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertDescription>{error}</AlertDescription>
+                            </Alert>
                         )}
 
                         {/* Lockout Warning */}
                         {isLocked && (
-                            <div className="flex items-center gap-3 p-4 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-400">
-                                <Lock className="w-5 h-5 flex-shrink-0" />
-                                <div>
-                                    <p className="text-sm font-medium">Conta bloqueada temporariamente</p>
-                                    <p className="text-sm opacity-80">
-                                        Tente novamente em {formatLockoutTime(lockoutTimer)}
-                                    </p>
-                                </div>
-                            </div>
+                            <Alert variant="warning">
+                                <Lock className="h-4 w-4" />
+                                <AlertTitle>Conta bloqueada temporariamente</AlertTitle>
+                                <AlertDescription>
+                                    Tente novamente em {formatLockoutTime(lockoutTimer)}
+                                </AlertDescription>
+                            </Alert>
                         )}
 
                         {/* Username Field */}

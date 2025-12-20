@@ -23,23 +23,6 @@ const initialNodes: Node<NodeData>[] = [
         }
     },
     {
-        id: 'test-node',
-        type: 'testNode',
-        position: { x: 958.35, y: 440.39 },
-        data: {
-            label: 'Test HL7 Message',
-            payloadType: 'hl7',
-            payload: 'MSH|^~\\&|HIS|HOSPITAL|MIRTHBR|ENGINE|202312140800||ADT^A01|MSG00001|P|2.3\nEVN|A01|202312140800\nPID|1||123456||SILVA^MARIA^LUIZA||19850315|F|||RUA DAS FLORES 123^^SAO PAULO^SP^01234567^BR||5511912345678\nPV1|1|I|UTI^101^A^HOSPITAL||||1234^ALMEIDA^CARLOS^EDUARDO^DR|||MED||||||||1234567890|||||||||||||202312140800',
-            sendMode: 'http',
-            // Updated to match HTTP Receiver defaults
-            httpUrl: 'http://localhost:8080/api/v1/admit',
-            httpMethod: 'POST',
-            tcpHost: 'localhost',
-            tcpPort: '8080',
-            tcpTimeout: '30'
-        }
-    },
-    {
         id: 'source-http',
         type: 'httpListener',
         position: { x: 0, y: 0 },
@@ -62,19 +45,12 @@ const initialNodes: Node<NodeData>[] = [
             append: false,
             encoding: 'UTF-8'
         }
-    },
-    {
-        id: 'deploy-channel',
-        type: 'deployNode',
-        position: { x: 900, y: 0 },
-        data: { label: 'Channel Terminal' }
     }
 ];
 
 const initialEdges: any[] = [
     { id: 'e1-2', source: 'source-http', target: 'parser-hl7', animated: true },
-    { id: 'e2-3', source: 'parser-hl7', target: 'dest-file', animated: true },
-    { id: 'e3-4', source: 'dest-file', target: 'deploy-channel', animated: true } // Connect to terminal
+    { id: 'e2-3', source: 'parser-hl7', target: 'dest-file', animated: true }
 ];
 
 export const useFlowStore = create<FlowState>()((...a) => ({

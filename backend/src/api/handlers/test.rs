@@ -85,9 +85,9 @@ pub async fn test_channel(
     }
 
     match manager.inject_message(channel_id, payload.payload).await {
-        Ok(_) => Ok(Json(serde_json::json!({ 
+        Ok(response_msg) => Ok(Json(serde_json::json!({ 
             "success": true, 
-            "message": "Message injected successfully" 
+            "message": response_msg 
         }))),
         Err(e) => {
             // Log the full error internally with an error ID
@@ -99,14 +99,14 @@ pub async fn test_channel(
                 "Failed to inject message"
             );
             
-            // Return generic error message to client
+            // Return specific error message to client (because now e might be "Lua error..." or "Filter error...")
             Err((
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({ 
                     "success": false, 
                     "error": "injection_failed",
                     "error_id": error_id,
-                    "message": "Failed to inject message. Contact support with error_id."
+                    "message": e.to_string() 
                 }))
             ))
         }

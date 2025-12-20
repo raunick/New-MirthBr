@@ -1,5 +1,5 @@
 use axum::{
-    routing::{get, post},
+    routing::{get, post, delete},
     Router,
     http::{Request, StatusCode, HeaderValue},
     middleware::{self, Next},
@@ -9,16 +9,11 @@ use std::net::SocketAddr;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tower_http::cors::{CorsLayer, Any};
 
-mod api;
-mod config;
-mod engine;
-mod storage;
-mod lua_helpers;
-mod logging;
+// Use modules from the library crate
+use mirthbr_backend::{api, engine, storage, logging};
 
 use std::sync::{Arc, Mutex};
 use std::collections::VecDeque;
-use crate::storage::logs::LogEntry;
 
 /// Get API key from environment - REQUIRED in production
 /// Called once at startup
@@ -179,35 +174,8 @@ async fn main() {
         tracing::info!("CleanupWorker started");
     }
 
-    // Auto-deploy "Hello World" Channel
-    let hello_channel = storage::models::Channel {
-        id: uuid::Uuid::new_v4(), // or fixed: uuid::uuid!("...")
-        name: "Hello World Channel".to_string(),
-        enabled: true,
-        source: storage::models::SourceConfig::Http { port: 8090, path: None, cert_path: None, key_path: None },
-        processors: vec![
-            storage::models::ProcessorConfig {
-                id: "proc-1".to_string(),
-                name: "Uppercaser".to_string(),
-                kind: storage::models::ProcessorType::Lua { code: "return msg.content:upper()".to_string() }
-            }
-        ],
-        destinations: vec![
-            storage::models::DestinationConfig {
-                id: "dest-1".to_string(),
-                name: "File Out".to_string(),
-                kind: storage::models::DestinationType::File { path: "./output".to_string(), filename: None, append: None, encoding: None }
-            }
-        ],
-        error_destination: None,
-        max_retries: Some(3),
-    };
-
-    tracing::info!("Auto-deploying Hello World Channel on Port 8090...");
-    // Pass None for frontend_schema as this is auto-deployed
-    if let Err(e) = channel_manager.start_channel(hello_channel, None).await {
-        tracing::error!("Failed to start Hello World channel: {}", e);
-    }
+    // Auto-deploy "Hello World" Channel (Idempotent)
+    engine::init::ensure_default_channels(channel_manager.clone()).await;
 
     // CORS: Allow only frontend (localhost:3000)
     let cors = CorsLayer::new()
@@ -222,6 +190,7 @@ async fn main() {
     let protected_routes = Router::new()
         .route("/channels", post(api::handlers::channels::create_channel))
         .route("/channels", get(api::handlers::channels::list_channels))
+        .route("/channels/:id", delete(api::handlers::channels::delete_channel))
         .route("/channels/status", get(api::handlers::channels::get_active_channels))
         .route("/channels/:id/start", post(api::handlers::channels::start_channel))
         .route("/channels/:id/stop", post(api::handlers::channels::stop_channel))

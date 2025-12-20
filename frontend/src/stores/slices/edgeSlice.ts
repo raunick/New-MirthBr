@@ -17,17 +17,14 @@ export const createEdgeSlice: StateCreator<FlowState, [], [], Pick<FlowState,
 
         onConnect: (connection: Connection) => {
             const { nodes, edges } = get();
-            const sourceNode = nodes.find(n => n.id === connection.source);
-            const targetNode = nodes.find(n => n.id === connection.target);
+            const validationResult = validateConnection(connection, nodes, edges);
 
-            if (sourceNode && targetNode) {
-                if (validateConnection(connection, sourceNode, targetNode)) {
-                    set({
-                        edges: addEdge({ ...connection, type: 'default', animated: true }, edges),
-                    });
-                } else {
-                    console.warn("Invalid connection prevented by validation logic");
-                }
+            if (validationResult.valid) {
+                set({
+                    edges: addEdge({ ...connection, type: 'default', animated: true }, edges),
+                });
+            } else {
+                console.warn(`Invalid connection: ${validationResult.reason}`);
             }
         },
 

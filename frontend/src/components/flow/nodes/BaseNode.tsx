@@ -5,6 +5,15 @@ import { useFlowStore } from '@/stores/useFlowStore';
 export type NodeCategory = 'source' | 'processor' | 'destination' | 'utility';
 export type NodeStatus = 'idle' | 'loading' | 'success' | 'error';
 
+// Handle configuration for multiple handles
+export interface HandleConfig {
+    id: string;
+    position?: Position;
+    color?: string;
+    label?: string;
+    style?: React.CSSProperties;
+}
+
 interface BaseNodeProps {
     children: ReactNode;
     category: NodeCategory;
@@ -17,7 +26,13 @@ interface BaseNodeProps {
     showTargetHandle?: boolean;
     sourceHandleId?: string;
     targetHandleId?: string;
+    // Multi-handle support
+    sourceHandles?: HandleConfig[];
+    targetHandles?: HandleConfig[];
+    // Config handles for utility nodes
+    configHandles?: HandleConfig[];
     width?: string;
+    style?: React.CSSProperties;
 }
 
 const CATEGORY_COLORS: Record<NodeCategory, string> = {
@@ -83,6 +98,31 @@ export function BaseNodeFooter({ children, className = '' }: { children: ReactNo
     );
 }
 
+/**
+ * ConfigHandle - Special handle for configuration inputs (from utility nodes)
+ * Has pulsing animation and tooltip to indicate it accepts utility node connections
+ */
+export function ConfigHandle({
+    id,
+    label,
+    position = Position.Left
+}: HandleConfig) {
+    return (
+        <div className="config-handle-wrapper group" data-handle-id={id}>
+            <Handle
+                type="target"
+                position={position}
+                id={id}
+                className="config-handle !w-3 !h-3 !bg-[var(--warning)] !border-2 !border-[var(--background)] transition-all group-hover:scale-125"
+            />
+            {label && (
+                <span className="config-handle-tooltip">
+                    {label}
+                </span>
+            )}
+        </div>
+    );
+}
 
 export function BaseNode({
     children,
@@ -96,7 +136,11 @@ export function BaseNode({
     showTargetHandle = true,
     sourceHandleId,
     targetHandleId,
+    sourceHandles,
+    targetHandles,
+    configHandles,
     width = '260px',
+    style,
 }: BaseNodeProps) {
     const nodeId = useNodeId();
     const isSelected = useFlowStore((state) =>
@@ -106,6 +150,11 @@ export function BaseNode({
     const categoryColor = CATEGORY_COLORS[category];
     const statusClass = STATUS_CLASSES[status];
 
+    // Compute handles to render
+    const hasMultipleSourceHandles = sourceHandles && sourceHandles.length > 0;
+    const hasMultipleTargetHandles = targetHandles && targetHandles.length > 0;
+    const hasConfigHandles = configHandles && configHandles.length > 0;
+
     return (
         <div
             className={`base-node flow-node ${category} ${statusClass} ${className}`}
@@ -113,21 +162,49 @@ export function BaseNode({
                 width,
                 '--node-category-color': categoryColor,
                 borderLeftColor: category === 'utility' ? categoryColor : undefined,
+                ...style,
             } as React.CSSProperties}
             data-selected={isSelected}
         >
             {/* Status Indicator Dot */}
             <StatusIndicator status={status} />
 
-            {/* Target Handle */}
-            {showTargetHandle && (
-                <Handle
-                    type="target"
-                    position={Position.Left}
-                    id={targetHandleId}
-                    className="!w-3 !h-3 !border-2 !border-[var(--background)]"
-                    style={{ backgroundColor: categoryColor }}
-                />
+            {/* Config Handles - for utility node connections */}
+            {hasConfigHandles && (
+                <div className="config-handles-container">
+                    {configHandles.map((handle, index) => (
+                        <ConfigHandle key={handle.id} {...handle} />
+                    ))}
+                </div>
+            )}
+
+            {/* Multiple Target Handles */}
+            {hasMultipleTargetHandles ? (
+                targetHandles.map((handle, index) => (
+                    <Handle
+                        key={handle.id}
+                        type="target"
+                        position={handle.position || Position.Left}
+                        id={handle.id}
+                        className="!w-3 !h-3 !border-2 !border-[var(--background)] handle-animated"
+                        style={{
+                            backgroundColor: handle.color || categoryColor,
+                            ...handle.style
+                        }}
+                        title={handle.label}
+                    />
+                ))
+            ) : (
+                /* Single Target Handle */
+                showTargetHandle && (
+                    <Handle
+                        type="target"
+                        position={Position.Left}
+                        id={targetHandleId}
+                        className="!w-3 !h-3 !border-2 !border-[var(--background)] handle-animated"
+                        style={{ backgroundColor: categoryColor }}
+                    />
+                )
             )}
 
             <BaseNodeHeader icon={icon} label={label} subtitle={subtitle} categoryColor={categoryColor} />
@@ -136,15 +213,33 @@ export function BaseNode({
                 {children}
             </BaseNodeContent>
 
-            {/* Source Handle */}
-            {showSourceHandle && (
-                <Handle
-                    type="source"
-                    position={Position.Right}
-                    id={sourceHandleId}
-                    className="!w-3 !h-3 !border-2 !border-[var(--background)]"
-                    style={{ backgroundColor: categoryColor }}
-                />
+            {/* Multiple Source Handles */}
+            {hasMultipleSourceHandles ? (
+                sourceHandles.map((handle, index) => (
+                    <Handle
+                        key={handle.id}
+                        type="source"
+                        position={handle.position || Position.Right}
+                        id={handle.id}
+                        className="!w-3 !h-3 !border-2 !border-[var(--background)] handle-animated"
+                        style={{
+                            backgroundColor: handle.color || categoryColor,
+                            ...handle.style
+                        }}
+                        title={handle.label}
+                    />
+                ))
+            ) : (
+                /* Single Source Handle */
+                showSourceHandle && (
+                    <Handle
+                        type="source"
+                        position={Position.Right}
+                        id={sourceHandleId}
+                        className="!w-3 !h-3 !border-2 !border-[var(--background)] handle-animated"
+                        style={{ backgroundColor: categoryColor }}
+                    />
+                )
             )}
         </div>
     );
