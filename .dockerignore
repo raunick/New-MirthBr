@@ -1,0 +1,44 @@
+# =====================================
+# Docker Build Ignore List
+# =====================================
+
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Documentation
+*.md
+!README.md
+
+# OS Files
+.DS_Store
+Thumbs.db
+
+# ----- Backend (Rust) -----
+backend/target
+backend/*.rs.bk
+backend/mirth.db
+backend/output
+backend/*.log
+backend/build.log
+
+# ----- Frontend (Node) -----
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/build
+frontend/.env
+frontend/.env.local
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+
+# Docker
+docker-compose.override.yml
+.env

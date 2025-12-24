@@ -1,0 +1,60 @@
+# =====================================
+# MirthBR - Docker Compose Configuration
+# =====================================
+# Full stack: Backend (Rust) + Frontend (Next.js)
+
+services:
+  # ----- Backend Service -----
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mirthbr-backend
+    ports:
+      - "3001:3001"
+    volumes:
+      - backend_data:/app/data
+    environment:
+      - DATABASE_URL=sqlite:/app/data/mirth.db
+      - BIND_ADDRESS=0.0.0.0
+      - PORT=3001
+      - RUST_LOG=info
+      - API_KEY=${API_KEY:-dev-key-change-in-production-32chars}
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "wget", "-q", "--spider", "http://localhost:3001/api/health" ]
+      interval: 30s
+      timeout: 10s
+      start_period: 10s
+      retries: 3
+    networks:
+      - mirthbr-network
+
+  # ----- Frontend Service -----
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://backend:3001
+    container_name: mirthbr-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:3001
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - mirthbr-network
+
+# ----- Volumes -----
+volumes:
+  backend_data:
+    driver: local
+
+# ----- Networks -----
+networks:
+  mirthbr-network:
+    driver: bridge

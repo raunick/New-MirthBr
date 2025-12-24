@@ -118,8 +118,28 @@
 ### Prerequisites
 - **Rust** 1.70+ ([Install](https://www.rust-lang.org/tools/install))
 - **Node.js** 18+ ([Install](https://nodejs.org/))
+- **Docker** (optional, for containerized deployment)
 
-### 1. Start Backend
+### Option 1: Docker (Recommended)
+
+```bash
+# Start all services
+docker compose up -d
+
+# View logs
+docker compose logs -f
+
+# Stop services
+docker compose down
+```
+
+Access:
+- **Frontend**: [http://localhost:3000](http://localhost:3000)
+- **Backend API**: [http://localhost:3001](http://localhost:3001)
+
+### Option 2: Local Development
+
+#### 1. Start Backend
 
 ```bash
 cd backend
@@ -130,7 +150,7 @@ Backend starts:
 - **API Server**: `http://localhost:3001`
 - **Hello World Channel**: HTTP Listener on port `1234` (auto-deployed)
 
-### 2. Start Frontend
+#### 2. Start Frontend
 
 ```bash
 cd frontend
